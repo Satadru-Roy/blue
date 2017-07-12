@@ -102,10 +102,14 @@ class DefaultVector(Vector):
         abs2meta_t = system._var_abs2meta[type_]
 
         data = {}
+        complex_data = {}
         indices = {}
         for set_name in system._var_set2iset[type_]:
             size = np.sum(sizes_byset_t[set_name][iproc, :])
             data[set_name] = np.zeros(size)
+            if self._alloc_complex:
+                complex_data[set_name] = np.zeros(size, dtype=np.complex)
+
             indices[set_name] = np.zeros(size, int)
 
         for abs_name in system._var_abs_names[type_]:
@@ -121,7 +125,7 @@ class DefaultVector(Vector):
             set_name = abs2meta_t[abs_name]['var_set']
             indices[set_name][ind_byset1:ind_byset2] = np.arange(ind1, ind2)
 
-        return data, indices
+        return data, complex_data, indices
 
     def _update_root_data(self):
         """
@@ -132,7 +136,7 @@ class DefaultVector(Vector):
         iproc = self._iproc
         root_vec = self._root_vector
 
-        _, tmp_indices = self._create_data()
+        _, _, tmp_indices = self._create_data()
 
         ext_sizes_t = system._ext_sizes[type_]
         int_sizes_t = np.sum(system._var_sizes[type_][iproc, :])
@@ -231,11 +235,7 @@ class DefaultVector(Vector):
             the root's vector instance or None, if we are at the root.
         """
         if root_vector is None:
-            self._data, self._indices = self._create_data()
-
-            # Allocate imaginary for complex step
-            if self._alloc_complex:
-                self._imag_data = deepcopy(self._data)
+            self._data, self._imag_data, self._indices = self._create_data()
 
         else:
             self._data, self._imag_data, self._indices = self._extract_data()
@@ -303,12 +303,20 @@ class DefaultVector(Vector):
         """
         For each item in _data, replace it with a copy of the data.
         """
-        for set_name, data in iteritems(self._data):
-            self._data[set_name] = np.array(data)
-
         if self._vector_info._under_complex_step:
-            for set_name, data in iteritems(self._imag_data):
-                self._imag_data[set_name] = np.array(data)
+            for set_name, data in iteritems(self._data):
+                self._data[set_name] = np.array(data, dtype=np.complex)
+
+            if self._alloc_complex:
+                for set_name, data in iteritems(self._imag_data):
+                    self._imag_data[set_name] = np.array(data)
+        else:
+            for set_name, data in iteritems(self._data):
+                self._data[set_name] = np.array(data)
+
+            if self._alloc_complex:
+                for set_name, data in iteritems(self._imag_data):
+                    self._imag_data[set_name] = np.array(data, dtype=np.complex)
 
     def __iadd__(self, vec):
         """
@@ -327,9 +335,9 @@ class DefaultVector(Vector):
         for set_name, data in iteritems(self._data):
             data += vec._data[set_name]
 
-        if self._vector_info._under_complex_step and vec._alloc_complex:
-            for set_name, data in iteritems(self._imag_data):
-                data += vec._imag_data[set_name]
+        #if self._vector_info._under_complex_step and vec._alloc_complex:
+        #    for set_name, data in iteritems(self._imag_data):
+        #        data += vec._imag_data[set_name]
         return self
 
     def __isub__(self, vec):
@@ -348,9 +356,9 @@ class DefaultVector(Vector):
         """
         for set_name, data in iteritems(self._data):
             data -= vec._data[set_name]
-        if self._vector_info._under_complex_step and vec._alloc_complex:
-            for set_name, data in iteritems(self._imag_data):
-                data -= vec._imag_data[set_name]
+        #if self._vector_info._under_complex_step and vec._alloc_complex:
+        #    for set_name, data in iteritems(self._imag_data):
+        #        data -= vec._imag_data[set_name]
         return self
 
     def __imul__(self, val):
@@ -367,17 +375,17 @@ class DefaultVector(Vector):
         <Vector>
             self * val
         """
-        if self._vector_info._under_complex_step:
-            r_val = np.real(val)
-            i_val = np.imag(val)
-            for key in self._data:
-                r_data = self._data[key]
-                i_data = self._imag_data[key]
-                r_data = r_val * r_data + i_val * i_data
-                i_data = r_val * i_data + i_val * r_data
-        else:
-            for data in itervalues(self._data):
-                data *= val
+        #if self._vector_info._under_complex_step:
+        #    r_val = np.real(val)
+        #    i_val = np.imag(val)
+        #    for key in self._data:
+        #        r_data = self._data[key]
+        #        i_data = self._imag_data[key]
+        #        r_data = r_val * r_data + i_val * i_data
+        #        i_data = r_val * i_data + i_val * r_data
+        #else:
+        for data in itervalues(self._data):
+            data *= val
         return self
 
     def add_scal_vec(self, val, vec):
@@ -391,16 +399,16 @@ class DefaultVector(Vector):
         vec : <Vector>
             this vector times val is added to self.
         """
-        if self._vector_info._under_complex_step:
-            r_val = np.real(val)
-            i_val = np.imag(val)
-            for set_name, data in iteritems(self._data):
-                data += r_val * vec._data[set_name] + i_val * vec._imag_data[set_name]
-            for set_name, data in iteritems(self._imag_data):
-                data += i_val * vec._data[set_name] + r_val * vec._imag_data[set_name]
-        else:
-            for set_name, data in iteritems(self._data):
-                data += val * vec._data[set_name]
+        #if self._vector_info._under_complex_step:
+            #r_val = np.real(val)
+            #i_val = np.imag(val)
+            #for set_name, data in iteritems(self._data):
+                #data += r_val * vec._data[set_name] + i_val * vec._imag_data[set_name]
+            #for set_name, data in iteritems(self._imag_data):
+                #data += i_val * vec._data[set_name] + r_val * vec._imag_data[set_name]
+        #else:
+        for set_name, data in iteritems(self._data):
+            data += val * vec._data[set_name]
 
     def elem_mult(self, vec):
         """

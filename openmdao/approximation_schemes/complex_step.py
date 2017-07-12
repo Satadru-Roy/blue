@@ -115,7 +115,7 @@ class ComplexStep(ApproximationScheme):
             raise ValueError('deriv_type must be one of "total" or "partial"')
 
         # Turn on complex step.
-        system._inputs._vector_info._under_complex_step = True
+        system._set_complex_step(enabled=True)
 
         for key, approximations in groupby(self._exec_list, self._key_fun):
             # groupby (along with this key function) will group all 'of's that have the same wrt and
@@ -129,7 +129,7 @@ class ComplexStep(ApproximationScheme):
             elif wrt in system._var_abs2meta['output']:
                 in_size = np.prod(system._var_abs2meta['output'][wrt]['shape'])
 
-            outputs = []
+            output_list = []
 
             # Note: If access to `approximations` is required again in the future, we will need to
             # throw it in a list first. The groupby iterator only works once.
@@ -137,14 +137,14 @@ class ComplexStep(ApproximationScheme):
                 of = approx_tuple[0]
                 # TODO: Sparse derivatives
                 out_size = np.prod(system._var_abs2meta['output'][of]['shape'])
-                outputs.append((of, np.zeros((out_size, in_size))))
+                output_list.append((of, np.zeros((out_size, in_size))))
 
             for idx in range(in_size):
                 # Run the Finite Difference
                 input_delta = [(wrt, idx, delta)]
                 result = self._run_point_complex(system, input_delta, deriv_type)
 
-                for of, subjac in outputs:
+                for of, subjac in output_list:
                     fact = 1.0 / delta
                     if deriv_type == 'total':
                         # Sign difference between output and resids
@@ -152,12 +152,12 @@ class ComplexStep(ApproximationScheme):
 
                     subjac[:, idx] = result._imag_views_flat[of] * fact
 
-            for of, subjac in outputs:
+            for of, subjac in output_list:
                 rel_key = abs_key2rel_key(system, (of, wrt))
                 jac[rel_key] = subjac
 
         # Turn off complex step.
-        system._inputs._vector_info._under_complex_step = False
+        system._set_complex_step(enabled=False)
 
     def _run_point_complex(self, system, input_deltas, deriv_type='partial'):
         """
@@ -192,9 +192,9 @@ class ComplexStep(ApproximationScheme):
 
         for in_name, idxs, delta in input_deltas:
             if in_name in outputs._imag_views_flat:
-                outputs._imag_views_flat[in_name][idxs] += delta
+                outputs._views_flat[in_name][idxs] += delta*1j
             else:
-                inputs._imag_views_flat[in_name][idxs] += delta
+                inputs._views_flat[in_name][idxs] += delta*1j
 
         # TODO: Grab only results of interest
         cache = results_vec._clone()
@@ -205,8 +205,8 @@ class ComplexStep(ApproximationScheme):
 
         for in_name, idxs, delta in input_deltas:
             if in_name in outputs._imag_views_flat:
-                outputs._imag_views_flat[in_name][idxs] -= delta
+                outputs._views_flat[in_name][idxs] -= delta*1j
             else:
-                inputs._imag_views_flat[in_name][idxs] -= delta
+                inputs._views_flat[in_name][idxs] -= delta*1j
 
         return results

@@ -803,3 +803,35 @@ class Component(System):
 
         for approx in itervalues(self._approx_schemes):
             approx._init_approximations()
+
+    def _set_complex_step(self, enabled=False):
+        """
+        Turn on of off complex step in this system.
+
+        This is called when linearizing this system under complex step.
+
+        Parameters
+        ----------
+        enabled : bool
+            True when complex stepping.
+        """
+        if enabled:
+            self._inputs._vector_info._under_complex_step = True
+
+            # Swap real for complex
+            for vec in [self._inputs, self._outputs, self._residuals]:
+                vec._data, vec._imag_data = vec._imag_data, vec._data
+                vec._views, vec._imag_views = vec._imag_views, vec._views
+                vec._views_flat, vec._imag_views_flat = vec._imag_views_flat, vec._views_flat
+                for vec_name in vec._data:
+                    vec._data[vec_name][:] = vec._imag_data[vec_name]
+                pass
+
+        else:
+            self._inputs._vector_info._under_complex_step = False
+
+            # Swap complex for real
+            for vec in [self._inputs, self._outputs, self._residuals]:
+                vec._data, vec._imag_data = vec._imag_data, vec._data
+                vec._views, vec._imag_views = vec._imag_views, vec._views
+                vec._views_flat, vec._imag_views_flat = vec._imag_views_flat, vec._views_flat

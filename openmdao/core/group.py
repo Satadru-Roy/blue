@@ -1312,3 +1312,19 @@ class Group(System):
             self._jacobian._initialize()
 
         super(Group, self)._setup_jacobians(jacobian, recurse)
+
+    def _set_complex_step(self, enabled=False):
+        """
+        Turn on of off complex step in this system.
+
+        This is called when linearizing this system under complex step.
+
+        Parameters
+        ----------
+        enabled : bool
+            True when complex stepping.
+        """
+        if enabled:
+            self._inputs._vector_info._under_complex_step = True
+        else:
+            self._inputs._vector_info._under_complex_step = False
