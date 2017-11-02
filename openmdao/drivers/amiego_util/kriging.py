@@ -10,7 +10,6 @@ import numpy as np
 import scipy.linalg as linalg
 from scipy.optimize import minimize
 
-from openmdao.surrogate_models.surrogate_model import SurrogateModel
 from openmdao.utils.concurrent import concurrent_eval_lb, concurrent_eval
 from openmdao.utils.general_utils import set_pyoptsparse_opt
 from openmdao.utils.mpi import FakeComm
@@ -63,6 +62,30 @@ def snopt_opt(objfun, desvar, lb, ub, title=None, options=None,
     msg = sol.optInform['text']
 
     return x, f, success_flag, msg
+
+
+class SurrogateModel(object):
+    """
+    Base class for surrogate models.
+    """
+
+    def __init__(self):
+        self.trained = False
+
+    def train(self, x, y):
+        self.trained = True
+
+    def predict(self, x):
+        if not self.trained:
+            msg = "{0} has not been trained, so no prediction can be made."\
+                .format(type(self).__name__)
+            raise RuntimeError(msg)
+
+    def linearize(self, x):
+
+        msg = "{0} has not defined a jacobian method." \
+            .format(type(self).__name__)
+        raise RuntimeError(msg)
 
 
 class KrigingSurrogate(SurrogateModel):

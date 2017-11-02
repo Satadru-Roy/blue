@@ -217,6 +217,7 @@ class pyOptSparseDriver(Driver):
 
         # Add all objectives
         objs = self.get_objective_values()
+        self._quantities = []
         for name in objs:
             opt_prob.addObj(name)
             self._quantities.append(name)

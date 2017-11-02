@@ -16,10 +16,10 @@ The global minimum can be found at f(x) = 0.397887
 """
 import numpy as np
 
-from openmdao.api import Component
+from openmdao.api import ExplicitComponent
 
 
-class Branin(Component):
+class Branin(ExplicitComponent):
     """
     The Branin test problem. This version is the standard version and
     contains two continuous parameters.
@@ -36,13 +36,13 @@ class Branin(Component):
         # Outputs
         self.add_output('f', val=0.0)
 
-        self.declare_partials(of='f', wrt=['x1', 'x1'])
+        self.declare_partials(of='f', wrt=['x0', 'x1'])
 
     def compute(self, inputs, outputs):
         """
         Define the function f(xI, xC).
 
-        Here xI is integer and xC is continuous.
+        Here x0 is integer and x1 is continuous.
         """
         x0 = inputs['x0']
         x1 = inputs['x1']
@@ -55,6 +55,7 @@ class Branin(Component):
         f = 1.0/(8.0*np.pi)
 
         outputs['f'] = a*(x1 - b*x0**2 + c*x0 - d)**2 + e*(1-f)*np.cos(x0) + e
+        print(x0, x1, outputs['f'])
 
     def compute_partials(self, inputs, partials):
         """

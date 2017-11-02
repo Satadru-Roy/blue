@@ -32,15 +32,18 @@ class TestAMIEGOdriver(unittest.TestCase):
         prob = Problem()
         model = prob.model = Group()
 
-        model.add_subsystem('p1', IndepVarComp('xC', 7.5), promotes=['*'])
-        model.add_subsystem('p2', IndepVarComp('xI', 0.0), promotes=['*'])
-        model.add_subsystem('comp', Branin(), promotes=['*'])
+        model.add_subsystem('p1', IndepVarComp('xC', 7.5))
+        model.add_subsystem('p2', IndepVarComp('xI', 0.0))
+        model.add_subsystem('comp', Branin())
 
-        model.approx_totals(method='fd')
+        model.connect('p2.xI', 'comp.x0')
+        model.connect('p1.xC', 'comp.x1')
 
-        model.add_design_var('xI', lower=-5.0, upper=10.0)
-        model.add_design_var('xC', lower=0.0, upper=15.0)
-        model.add_objective('f')
+        #model.approx_totals(method='fd')
+
+        model.add_design_var('p2.xI', lower=-5.0, upper=10.0)
+        model.add_design_var('p1.xC', lower=0.0, upper=15.0)
+        model.add_objective('comp.f')
 
         prob.driver = AMIEGO_driver()
         #prob.driver.options['disp'] = False
@@ -48,7 +51,7 @@ class TestAMIEGOdriver(unittest.TestCase):
         prob.driver.cont_opt = pyOptSparseDriver()
         prob.driver.cont_opt.options['optimizer'] = 'SNOPT'
 
-        prob.driver.sampling = {'xI' : np.array([[-5.0], [0.0], [5.0]])}
+        prob.driver.sampling = {'p2.xI' : np.array([[-5.0], [0.0], [5.0]])}
 
         prob.setup(check=False)
         prob.run()

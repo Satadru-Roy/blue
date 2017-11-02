@@ -135,7 +135,12 @@ class AMIEGO_driver(Driver):
         # Identify and size our design variables.
         j = 0
         prom2abs = problem.model._var_allprocs_prom2abs_list['output']
-        self.i_dvs = [prom2abs[item][0] for item in self.sampling]
+        sampling_abs_names = {}
+        for name, data in iteritems(self.sampling):
+            abs_name = prom2abs[name][0]
+            sampling_abs_names[abs_name] = data
+            self.i_dvs.append(abs_name)
+        self.sampling = sampling_abs_names
         for name, val in iteritems(self.get_design_var_values()):
             if name in self.i_dvs:
                 i_size = len(val)
@@ -292,7 +297,7 @@ class AMIEGO_driver(Driver):
         # Need to cache the continuous desvars so that we start each new
         # optimization back at the original initial condition.
         xc_cache = {}
-        desvars = cont_opt.get_desvars()
+        desvars = cont_opt.get_design_var_values()
         for var, val in iteritems(desvars):
             xc_cache[var] = val.copy()
 
@@ -325,11 +330,11 @@ class AMIEGO_driver(Driver):
                 # Set Integer design variables
                 for var in self.i_dvs:
                     i, j = self.i_idx[var]
-                    self.set_desvar(var, x_i[i_run][i:j])
+                    self.set_design_var(var, x_i[i_run][i:j])
 
                 # Restore initial condition for continuous vars.
                 for var, val in iteritems(xc_cache):
-                    cont_opt.set_desvar(var, val)
+                    cont_opt.set_design_var(var, val)
 
                 # If we are doing any prescreening, we need to attach the
                 # list of integer desvars to the cont_opt
@@ -337,8 +342,8 @@ class AMIEGO_driver(Driver):
 
                 # Optimize continuous variables
                 self.pre_cont_opt_hook()
-                cont_opt.run(problem)
-                eflag_conopt = cont_opt.success
+                fail = cont_opt.run()
+                eflag_conopt = not fail
                 if disp:
                     print("Exit Flag:", eflag_conopt)
 
@@ -346,23 +351,21 @@ class AMIEGO_driver(Driver):
                     self.minlp.bad_samples.append(x_i[i_run])
 
                 # Get objectives and constraints (TODO)
-                current_objs = self.get_objectives()
+                current_objs = self.get_objective_values()
                 obj_name = list(current_objs.keys())[0]
                 current_obj = current_objs[obj_name].copy()
                 obj.append(current_obj)
-                for name, value in iteritems(self.get_constraints()):
+                for name, value in iteritems(self.get_constraint_values()):
                     cons[name].append(value.copy())
 
                 # If best solution, save it
                 if eflag_conopt and current_obj < best_obj:
                     best_obj = current_obj
                     # Save integer and continuous DV
-                    desvars = self.get_desvars()
+                    desvars = self.get_design_var_values()
 
                     for name in self.i_dvs:
                         val = desvars[name]
-                        if isinstance(val, _ByObjWrapper):
-                            val = val.val
                         best_int_design[name] = val.copy()
 
                     for name in self.c_dvs:

@@ -122,6 +122,72 @@ class FakeComm(object):
         self.rank = 0
         self.size = 1
 
+    def gather(self, name, root=None):
+        """
+        Fake call for gather.
+
+        Parameters
+        ----------
+        name : name
+            Name.
+        root : root
+            Root.
+
+        Returns
+        -------
+        name
+            Name
+        """
+        return name
+
+    def bcast(self, name, root=None):
+        """
+        Fake call for bcast.
+
+        Parameters
+        ----------
+        name : name
+            Name.
+        root : root
+            Root.
+
+        Returns
+        -------
+        name
+            Name
+        """
+        return name
+
+    def recv(self, name, tag=None):
+        """
+        Fake call for recv.
+
+        Parameters
+        ----------
+        name : name
+            Name.
+        tag : tag
+            Tag.
+
+        Returns
+        -------
+        name
+            Name
+        """
+        return name
+
+    def allreduce(self, sendbuf, op=None):
+        """
+        Fake call for Allreduce.
+
+        Parameters
+        ----------
+        sendbuf : sendbuf
+            Sendbuf.
+        op : op
+            Op.
+        """
+        pass
 
 if MPI:
     def mpirun_tests():
