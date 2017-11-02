@@ -152,7 +152,7 @@ class pyOptSparseDriver(Driver):
         self._quantities = []
         self.fail = False
 
-    def _setup_driver(self, problem):
+    def _setup_driver(self, problem, assemble_var_info=True):
         """
         Prepare the driver for execution.
 
@@ -162,8 +162,10 @@ class pyOptSparseDriver(Driver):
         ----------
         problem : <Problem>
             Pointer to the containing problem.
+        assemble_var_info : bool
+            If True, then gather all the designvars, objectives, and constraints from the model.
         """
-        super(pyOptSparseDriver, self)._setup_driver(problem)
+        super(pyOptSparseDriver, self)._setup_driver(problem, assemble_var_info)
 
         self.supports['gradients'] = self.options['optimizer'] in grad_drivers
 

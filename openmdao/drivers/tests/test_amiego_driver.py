@@ -57,8 +57,8 @@ class TestAMIEGOdriver(unittest.TestCase):
         prob.run()
 
         # Optimal solution
-        assert_rel_error(self, prob['f'], 0.49398, 1e-5)
-        #assert_rel_error(self, prob['xI'], -3.0, 1e-5)
+        assert_rel_error(self, prob['comp.f'], 0.49398, 1e-5)
+        self.assertTrue(int(prob['p2.xI']) in [3, -3])
 
     #def test_three_bar_truss(self):
 

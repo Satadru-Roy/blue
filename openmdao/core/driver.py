@@ -155,7 +155,7 @@ class Driver(object):
         """
         self._rec_mgr.close()
 
-    def _setup_driver(self, problem):
+    def _setup_driver(self, problem, assemble_var_info=True):
         """
         Prepare the driver for execution.
 
@@ -165,21 +165,27 @@ class Driver(object):
         ----------
         problem : <Problem>
             Pointer to the containing problem.
+        assemble_var_info : bool
+            If True, then gather all the designvars, objectives, and constraints from the model.
         """
         self._problem = problem
         model = problem.model
 
-        self._objs = objs = OrderedDict()
-        self._cons = cons = OrderedDict()
+        if assemble_var_info:
+            self._objs = OrderedDict()
+            self._cons = OrderedDict()
+
+            # Gather up the information for design vars.
+            self._designvars = model.get_design_vars(recurse=True)
+
+        objs = self._objs
+        cons = self._cons
         self._responses = model.get_responses(recurse=True)
         for name, data in iteritems(self._responses):
             if data['type'] == 'con':
                 cons[name] = data
             else:
                 objs[name] = data
-
-        # Gather up the information for design vars.
-        self._designvars = model.get_design_vars(recurse=True)
 
         con_set = set()
         obj_set = set()

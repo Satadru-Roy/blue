@@ -230,7 +230,7 @@ class Branch_and_Bound(Driver):
         self.load_balance = True
         self.aggressive_splitting = True
 
-    def _setup_driver(self, problem):
+    def _setup_driver(self, problem, assemble_var_info=True):
         """
         Prepare the driver for execution.
 
@@ -240,8 +240,10 @@ class Branch_and_Bound(Driver):
         ----------
         problem : <Problem>
             Pointer to the containing problem.
+        assemble_var_info : bool
+            If True, then gather all the designvars, objectives, and constraints from the model.
         """
-        super(Branch_and_Bound, self)._setup_driver(problem)
+        super(Branch_and_Bound, self)._setup_driver(problem, assemble_var_info)
 
         # Size our design variables.
         j = 0

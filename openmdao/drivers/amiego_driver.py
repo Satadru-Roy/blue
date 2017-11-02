@@ -13,6 +13,7 @@ Implemented in OpenMDAO, Aug 2016, Kenneth T. Moore
 """
 from __future__ import print_function
 
+from collections import OrderedDict
 from copy import deepcopy
 from itertools import chain
 from time import time
@@ -109,7 +110,7 @@ class AMIEGO_driver(Driver):
         self.con_sampling = None
         self.sampling_eflag = None
 
-    def _setup_driver(self, problem):
+    def _setup_driver(self, problem, assemble_var_info=True):
         """
         Prepare the driver for execution.
 
@@ -119,16 +120,21 @@ class AMIEGO_driver(Driver):
         ----------
         problem : <Problem>
             Pointer to the containing problem.
+        assemble_var_info : bool
+            If True, then gather all the designvars, objectives, and constraints from the model.
         """
-        super(AMIEGO_driver, self)._setup_driver(problem)
+        super(AMIEGO_driver, self)._setup_driver(problem, assemble_var_info)
 
         cont_opt = self.cont_opt
-        cont_opt._setup_driver(problem)
+        cont_opt._cons = OrderedDict()
+        cont_opt._objs = OrderedDict()
+        cont_opt._designvars = OrderedDict()
+
+        minlp = self.minlp
 
         if 'disp' in cont_opt.options:
             cont_opt.options['disp'] = self.options['disp']
 
-        minlp = self.minlp
         minlp._setup_driver(problem)
         minlp.options['disp'] = self.options['disp']
 
@@ -179,17 +185,8 @@ class AMIEGO_driver(Driver):
         for name, con in iteritems(self._cons):
             cont_opt._cons[name] = con
 
-    def set_root(self, pathname, root):
-        """ Sets the root Group of this driver.
-
-        Args
-        ----
-        root : Group
-            Our root Group.
-        """
-        super(AMIEGO_driver, self).set_root(pathname, root)
-        self.cont_opt.set_root(pathname, root)
-        self.minlp.set_root(pathname, root)
+        # Finish setting up the subdrivers.
+        cont_opt._setup_driver(problem, assemble_var_info=False)
 
     def run(self):
         """
@@ -282,7 +279,7 @@ class AMIEGO_driver(Driver):
                     #upper = self._desvars[var]['upper']
                     i, j = self.i_idx[var]
 
-                    #Samples should be bounded in an unit hypercube [0,1]
+                    #Samples should be bounded in a unit hypercube [0,1]
                     x_i_0 = self.sampling[var][i_train, :]
 
                     # Now, we are no longer normalizing the integer inputs. So
@@ -380,7 +377,7 @@ class AMIEGO_driver(Driver):
             # Step 3: Build the surrogate models
             #------------------------------------------------------------------
             obj_surrogate = self.surrogate()
-            obj_surrogate.comm = problem.root.comm
+            obj_surrogate.comm = problem.model.comm
             obj_surrogate.use_snopt = True
             obj_surrogate.train(x_i, obj, KPLS_status=True)
 
@@ -413,7 +410,7 @@ class AMIEGO_driver(Driver):
 
                 for j in range(val.shape[1]):
                     con_surr = self.surrogate()
-                    con_surr.comm = problem.root.comm
+                    con_surr.comm = problem.model.comm
                     con_surr.use_snopt = True
 
                     if double_sided:
@@ -525,15 +522,11 @@ class AMIEGO_driver(Driver):
         # Pull optimal parameters back into framework and re-run, so that
         # framework is left in the right final state
         for name, val in iteritems(best_int_design):
-            if isinstance(val, _ByObjWrapper):
-                self.set_desvar(name, val.val)
-            else:
-                self.set_desvar(name, val)
+            self.set_design_var(name, val)
         for name, val in iteritems(best_cont_design):
-            self.set_desvar(name, val)
+            self.set_design_var(name, val)
 
-        with self.root._dircontext:
-            self.root.solve_nonlinear(metadata=self.metadata)
+        problem.model._solve_nonlinear()
 
         if disp:
             print("\n===================Result Summary====================")

@@ -55,7 +55,6 @@ class Branin(ExplicitComponent):
         f = 1.0/(8.0*np.pi)
 
         outputs['f'] = a*(x1 - b*x0**2 + c*x0 - d)**2 + e*(1-f)*np.cos(x0) + e
-        print(x0, x1, outputs['f'])
 
     def compute_partials(self, inputs, partials):
         """

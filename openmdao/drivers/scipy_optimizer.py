@@ -121,7 +121,7 @@ class ScipyOptimizer(Driver):
         self.iter_count = 0
         self._exc_info = None
 
-    def _setup_driver(self, problem):
+    def _setup_driver(self, problem, assemble_var_info=True):
         """
         Prepare the driver for execution.
 
@@ -131,8 +131,10 @@ class ScipyOptimizer(Driver):
         ----------
         problem : <Problem>
             Pointer
+        assemble_var_info : bool
+            If True, then gather all the designvars, objectives, and constraints from the model.
         """
-        super(ScipyOptimizer, self)._setup_driver(problem)
+        super(ScipyOptimizer, self)._setup_driver(problem, assemble_var_info)
         opt = self.options['optimizer']
 
         self.supports['gradients'] = opt in _gradient_optimizers
