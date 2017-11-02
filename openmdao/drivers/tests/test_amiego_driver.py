@@ -5,11 +5,10 @@ import unittest
 import numpy as np
 
 from openmdao.api import IndepVarComp, Group, Problem, ExecComp, pyOptSparseDriver
+from openmdao.devtools.testutil import assert_rel_error
 from openmdao.drivers.amiego_driver import AMIEGO_driver
-from openmdao.test.branin import BraninInteger
-#from openmdao.test.griewank import Greiwank
-#from openmdao.test.three_bar_truss import ThreeBarTruss, ThreeBarTrussVector
-#from openmdao.test.util import assert_rel_error
+from openmdao.test_suite.components.branin import Branin
+from openmdao.utils.general_utils import set_pyoptsparse_opt
 
 # check that pyoptsparse is installed
 # if it is, try to use SNOPT but fall back to SLSQP
@@ -31,22 +30,23 @@ class TestAMIEGOdriver(unittest.TestCase):
     def test_simple_branin_opt(self):
 
         prob = Problem()
-        root = prob.root = Group()
+        model = prob.model = Group()
 
-        root.add('p1', IndepVarComp('xC', 7.5), promotes=['*'])
-        root.add('p2', IndepVarComp('xI', 0), promotes=['*'])
-        root.add('comp', BraninInteger(), promotes=['*'])
+        model.add_subsystem('p1', IndepVarComp('xC', 7.5), promotes=['*'])
+        model.add_subsystem('p2', IndepVarComp('xI', 0.0), promotes=['*'])
+        model.add_subsystem('comp', Branin(), promotes=['*'])
+
+        model.approx_totals(method='fd')
+
+        model.add_design_var('xI', lower=-5.0, upper=10.0)
+        model.add_design_var('xC', lower=0.0, upper=15.0)
+        model.add_objective('f')
 
         prob.driver = AMIEGO_driver()
         #prob.driver.options['disp'] = False
-        root.deriv_options['type'] = 'fd'
+
         prob.driver.cont_opt = pyOptSparseDriver()
         prob.driver.cont_opt.options['optimizer'] = 'SNOPT'
-
-        prob.driver.add_desvar('xI', lower=-5, upper=10)
-        prob.driver.add_desvar('xC', lower=0.0, upper=15.0)
-
-        prob.driver.add_objective('f')
 
         prob.driver.sampling = {'xI' : np.array([[-5.0], [0.0], [5.0]])}
 

@@ -127,6 +127,7 @@ class Driver(object):
         self.supports.declare('integer_design_vars', types=bool, default=False)
         self.supports.declare('gradients', types=bool, default=False)
         self.supports.declare('active_set', types=bool, default=False)
+        self.supports.declare('mixed_integer', types=bool, default=False)
 
         self.iter_count = 0
         self.metadata = None

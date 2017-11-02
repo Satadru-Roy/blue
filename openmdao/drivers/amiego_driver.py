@@ -23,15 +23,15 @@ from six.moves import range
 import numpy as np
 
 from openmdao.core.driver import Driver
-from openmdao.core.vec_wrapper import _ByObjWrapper
-from openmdao.drivers.branch_and_bound import Branch_and_Bound
+from openmdao.drivers.amiego_util.branch_and_bound import Branch_and_Bound
+from openmdao.drivers.amiego_util.kriging import KrigingSurrogate
 from openmdao.drivers.scipy_optimizer import ScipyOptimizer
-from openmdao.surrogate_models.kriging import KrigingSurrogate
-from openmdao.util.record_util import create_local_meta, update_local_meta
 
 
 class AMIEGO_driver(Driver):
-    """ Driver for AMIEGO (A Mixed Integer Efficient Global Optimization).
+    """
+    Driver for AMIEGO (A Mixed Integer Efficient Global Optimization).
+
     This driver is based on the EGO-Like Framework (EGOLF) for the
     simultaneous design-mission-allocation optimization problem. It handles
     mixed-integer/discrete type design variables in a computationally
@@ -72,19 +72,19 @@ class AMIEGO_driver(Driver):
 
         # Options
         opt = self.options
-        opt.add_option('disp', True,
-                       desc='Set to False to prevent printing of iteration '
-                       'messages.')
-        opt.add_option('ei_tol_rel', 0.001, lower=0.0,
-                       desc='Relative tolerance on the expected improvement.')
-        opt.add_option('ei_tol_abs', 0.001, lower=0.0,
-                       desc='Absolute tolerance on the expected improvement.')
-        opt.add_option('max_infill_points', 10, lower=1.0,
-                       desc='Ratio of maximum number of additional points to number of initial points.')
+        opt.declare('disp', True,
+                    desc='Set to False to prevent printing of iteration messages.')
+        opt.declare('ei_tol_rel', 0.001, lower=0.0,
+                    desc='Relative tolerance on the expected improvement.')
+        opt.declare('ei_tol_abs', 0.001, lower=0.0,
+                    desc='Absolute tolerance on the expected improvement.')
+        opt.declare('max_infill_points', 10, lower=1.0,
+                    desc='Ratio of maximum number of additional points to number of initial '
+                    'points.')
 
         # The default continuous optimizer. User can slot a different one
         self.cont_opt = ScipyOptimizer()
-        self.cont_opt.options['optimizer'] = 'SLSQP' #TODO Switch tp SNOPT
+        self.cont_opt.options['optimizer'] = 'SLSQP'
 
         # The default MINLP optimizer
         self.minlp = Branch_and_Bound()
@@ -97,9 +97,8 @@ class AMIEGO_driver(Driver):
         self.i_dvs = []
         self.i_size = 0
         self.i_idx = {}
-        self.record_name = 'AMIEGO'
 
-        # Initial Sampling
+        # Initial Sampling of integer design points
         # TODO: Somehow slot an object that generates this (LHC for example)
         self.sampling = {}
 
@@ -110,33 +109,36 @@ class AMIEGO_driver(Driver):
         self.con_sampling = None
         self.sampling_eflag = None
 
-    def _setup(self):
-        """  Initialize whatever we need."""
-        super(AMIEGO_driver, self)._setup()
+    def _setup_driver(self, problem):
+        """
+        Prepare the driver for execution.
+
+        This is the final thing to run during setup.
+
+        Parameters
+        ----------
+        problem : <Problem>
+            Pointer to the containing problem.
+        """
+        super(AMIEGO_driver, self)._setup_driver(problem)
+
         cont_opt = self.cont_opt
-        cont_opt._setup()
-        cont_opt.record_name = self.record_name + ':' + cont_opt.record_name
-        cont_opt.dv_conversions = self.dv_conversions
-        cont_opt.fn_conversions = self.fn_conversions
+        cont_opt._setup_driver(problem)
 
         if 'disp' in cont_opt.options:
             cont_opt.options['disp'] = self.options['disp']
 
         minlp = self.minlp
-        minlp._setup()
-        minlp.record_name = self.record_name + ':' +  minlp.record_name
-        minlp.standalone = False
+        minlp._setup_driver(problem)
         minlp.options['disp'] = self.options['disp']
 
         # Identify and size our design variables.
         j = 0
-        for name, val in iteritems(self.get_desvars()):
-            if isinstance(val, _ByObjWrapper):
-                self.i_dvs.append(name)
-                try:
-                    i_size = len(np.asarray(val.val))
-                except TypeError:
-                    i_size = 1
+        prom2abs = problem.model._var_allprocs_prom2abs_list['output']
+        self.i_dvs = [prom2abs[item][0] for item in self.sampling]
+        for name, val in iteritems(self.get_design_var_values()):
+            if name in self.i_dvs:
+                i_size = len(val)
                 self.i_idx[name] = (j, j+i_size)
                 j += i_size
             else:
@@ -146,7 +148,7 @@ class AMIEGO_driver(Driver):
         # Lower and Upper bounds for integer desvars
         self.xI_lb = np.empty((self.i_size, ))
         self.xI_ub = np.empty((self.i_size, ))
-        dv_dict = self._desvars
+        dv_dict = self._designvars
         for var in self.i_dvs:
             i, j = self.i_idx[var]
             self.xI_lb[i:j] = dv_dict[var]['lower']
@@ -154,11 +156,11 @@ class AMIEGO_driver(Driver):
 
         # Continuous Optimization only gets continuous desvars
         for name in self.c_dvs:
-            cont_opt._desvars[name] = self._desvars[name]
+            cont_opt._designvars[name] = self._designvars[name]
 
         # MINLP Optimization only gets discrete desvars
         for name in self.i_dvs:
-            minlp._desvars[name] = self._desvars[name]
+            minlp._designvars[name] = self._designvars[name]
 
         # It should be perfectly okay to 'share' obj and con with the
         # MINLP optimizers.
@@ -184,40 +186,16 @@ class AMIEGO_driver(Driver):
         self.cont_opt.set_root(pathname, root)
         self.minlp.set_root(pathname, root)
 
-    def outputs_of_interest(self):
-        """ Note: We need to also calculate relevance for constraints in the
-        cont_opt slot.
+    def run(self):
+        """
+        Execute the AMIEGO driver.
 
         Returns
         -------
-        list of tuples of str
-            The list of constraints and objectives, organized into tuples
-            according to previously defined VOI groups.
+        boolean
+            Failure flag; True if failed to converge, False is successful.
         """
-        all_cons = self._cons.copy()
-        for name, con in iteritems(self.cont_opt._cons):
-            all_cons[name] = con
-
-        return self._of_interest(list(chain(self._objs, all_cons)))
-
-    def get_req_procs(self):
-        """
-        Returns
-        -------
-        tuple
-            A tuple of the form (min_procs, max_procs), indicating the
-            min and max processors usable by this `Driver`.
-        """
-        return self.minlp.get_req_procs()
-
-    def run(self, problem):
-        """Execute the AMIEGO driver.
-
-        Args
-        ----
-        problem : `Problem`
-            Our parent `Problem`.
-        """
+        problem = self._problem
         n_i = self.i_size
         ei_tol_rel = self.options['ei_tol_rel']
         ei_tol_abs = self.options['ei_tol_abs']
@@ -227,10 +205,7 @@ class AMIEGO_driver(Driver):
         xI_lb = self.xI_lb
         xI_ub = self.xI_ub
 
-        # Metadata Setup
-        self.metadata = create_local_meta(None, self.record_name)
         self.iter_count = 0
-        update_local_meta(self.metadata, (self.iter_count, ))
 
         #----------------------------------------------------------------------
         # Step 1: Generate a set of initial integer points
@@ -248,7 +223,7 @@ class AMIEGO_driver(Driver):
         cons = {}
         best_int_design = {}
         best_cont_design = {}
-        for con in self.get_constraint_metadata():
+        for con in self._cons:
             cons[con] = []
 
         # Start with pre-optimized samples
