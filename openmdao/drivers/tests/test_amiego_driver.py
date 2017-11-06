@@ -54,7 +54,7 @@ class TestAMIEGOdriver(unittest.TestCase):
         prob.driver.sampling = {'p2.xI' : np.array([[-5.0], [0.0], [5.0]])}
 
         prob.setup(check=False)
-        prob.run()
+        prob.run_driver()
 
         # Optimal solution
         assert_rel_error(self, prob['comp.f'], 0.49398, 1e-5)
