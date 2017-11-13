@@ -1,8 +1,9 @@
 """Define a base class for all Drivers in OpenMDAO."""
 from __future__ import print_function
 from collections import OrderedDict
+import warnings
 
-from six import iteritems
+from six import iteritems, itervalues
 
 import numpy as np
 
@@ -117,6 +118,9 @@ class Driver(object):
         self.recording_options.declare('excludes', types=list, default=[],
                                        desc='Patterns for vars to exclude in recording '
                                        '(processed post-includes)')
+        self.recording_options.declare('record_derivatives', types=bool, default=False,
+                                       desc='Set to True to record derivatives at the driver \
+                                       level')
         ###########################
 
         # What the driver supports.
@@ -183,11 +187,23 @@ class Driver(object):
         objs = self._objs
         cons = self._cons
         self._responses = model.get_responses(recurse=True)
+        response_size = 0
         for name, data in iteritems(self._responses):
             if data['type'] == 'con':
                 cons[name] = data
             else:
                 objs[name] = data
+            response_size += data['size']
+
+        if assemble_var_info:
+            desvar_size = np.sum(data['size'] for data in itervalues(self._designvars))
+
+            if ((problem._mode == 'fwd' and desvar_size > response_size) or
+                    (problem._mode == 'rev' and response_size > desvar_size)):
+                warnings.warn("Inefficient choice of derivative mode.  You chose '%s' for a "
+                              "problem with %d design variables and %d response variables "
+                              "(objectives and constraints)." %
+                              (problem._mode, desvar_size, response_size), RuntimeWarning)
 
         con_set = set()
         obj_set = set()

@@ -277,9 +277,6 @@ class System(object):
                                        desc='Set to True to record outputs at the system level')
         self.recording_options.declare('record_residuals', types=bool, default=True,
                                        desc='Set to True to record residuals at the system level')
-        self.recording_options.declare('record_derivatives', types=bool, default=False,
-                                       desc='Set to True to record derivatives at the system \
-                                       level')
         self.recording_options.declare('record_metadata', types=bool, desc='Record metadata',
                                        default=True)
         self.recording_options.declare('includes', types=list, default=['*'],
@@ -1001,7 +998,6 @@ class System(object):
                        if data['parallel_deriv_color'] is not None
                        or data['vectorize_derivs'])
 
-        self._mode = mode
         self._vois = vois
         if vec_names is None:  # should only occur at top level on full setup
             vec_names = ['nonlinear', 'linear']

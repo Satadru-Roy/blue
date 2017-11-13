@@ -60,68 +60,68 @@ class TestAMIEGOdriver(unittest.TestCase):
         assert_rel_error(self, prob['comp.f'], 0.49398, 1e-5)
         self.assertTrue(int(prob['p2.xI']) in [3, -3])
 
-    #def test_three_bar_truss(self):
+    def test_three_bar_truss(self):
 
-        #prob = Problem()
-        #root = prob.root = Group()
+        prob = Problem()
+        model = prob.model = Group()
 
-        #root.add('xc_a1', IndepVarComp('area1', 5.0), promotes=['*'])
-        #root.add('xc_a2', IndepVarComp('area2', 5.0), promotes=['*'])
-        #root.add('xc_a3', IndepVarComp('area3', 5.0), promotes=['*'])
-        #root.add('xi_m1', IndepVarComp('mat1', 1), promotes=['*'])
-        #root.add('xi_m2', IndepVarComp('mat2', 1), promotes=['*'])
-        #root.add('xi_m3', IndepVarComp('mat3', 1), promotes=['*'])
-        #root.add('comp', ThreeBarTruss(), promotes=['*'])
+        model.add_subsystem('xc_a1', IndepVarComp('area1', 5.0), promotes=['*'])
+        model.add_subsystem('xc_a2', IndepVarComp('area2', 5.0), promotes=['*'])
+        model.add_subsystem('xc_a3', IndepVarComp('area3', 5.0), promotes=['*'])
+        model.add_subsystem('xi_m1', IndepVarComp('mat1', 1), promotes=['*'])
+        model.add_subsystem('xi_m2', IndepVarComp('mat2', 1), promotes=['*'])
+        model.add_subsystem('xi_m3', IndepVarComp('mat3', 1), promotes=['*'])
+        model.add_subsystem('comp', ThreeBarTruss(), promotes=['*'])
 
-        #prob.driver = AMIEGO_driver()
-        ##prob.driver.cont_opt.options['tol'] = 1e-12
-        ##prob.driver.options['disp'] = False
-        #root.deriv_options['type'] = 'fd'
-        #prob.driver.cont_opt = pyOptSparseDriver()
-        #prob.driver.cont_opt.options['optimizer'] = 'SNOPT'
+        prob.driver = AMIEGO_driver()
+        #prob.driver.cont_opt.options['tol'] = 1e-12
+        #prob.driver.options['disp'] = False
+        #model.deriv_options['type'] = 'fd'
+        prob.driver.cont_opt = pyOptSparseDriver()
+        prob.driver.cont_opt.options['optimizer'] = 'SNOPT'
 
-        #prob.driver.add_desvar('area1', lower=0.0005, upper=10.0)
-        #prob.driver.add_desvar('area2', lower=0.0005, upper=10.0)
-        #prob.driver.add_desvar('area3', lower=0.0005, upper=10.0)
-        #prob.driver.add_desvar('mat1', lower=1, upper=4)
-        #prob.driver.add_desvar('mat2', lower=1, upper=4)
-        #prob.driver.add_desvar('mat3', lower=1, upper=4)
-        #prob.driver.add_objective('mass')
-        #prob.driver.add_constraint('stress', upper=1.0)
+        model.add_desvar('area1', lower=0.0005, upper=10.0)
+        model.add_desvar('area2', lower=0.0005, upper=10.0)
+        model.add_desvar('area3', lower=0.0005, upper=10.0)
+        model.add_desvar('mat1', lower=1, upper=4)
+        model.add_desvar('mat2', lower=1, upper=4)
+        model.add_desvar('mat3', lower=1, upper=4)
+        model.add_objective('mass')
+        model.add_constraint('stress', upper=1.0)
 
-        #npt = 5
-        #samples = np.array([[4, 2, 3],
-                            #[1, 3, 1],
-                            #[3, 1, 2],
-                            #[3, 4, 2],
-                            #[1, 1, 4]])
+        npt = 5
+        samples = np.array([[4, 2, 3],
+                            [1, 3, 1],
+                            [3, 1, 2],
+                            [3, 4, 2],
+                            [1, 1, 4]])
 
-        #prob.driver.sampling = {'mat1' : samples[:, 0].reshape((npt, 1)),
-                                #'mat2' : samples[:, 1].reshape((npt, 1)),
-                                #'mat3' : samples[:, 2].reshape((npt, 1))}
+        prob.driver.sampling = {'mat1' : samples[:, 0].reshape((npt, 1)),
+                                'mat2' : samples[:, 1].reshape((npt, 1)),
+                                'mat3' : samples[:, 2].reshape((npt, 1))}
 
-        #prob.setup(check=False)
+        prob.setup(check=False)
 
-        #prob.run()
+        prob.run_driver()
 
-        #assert_rel_error(self, prob['mass'], 5.287, 1e-3)
-        #assert_rel_error(self, prob['mat1'], 3, 1e-5)
-        #assert_rel_error(self, prob['mat2'], 3, 1e-5)
-        ##Material 3 can be anything
+        assert_rel_error(self, prob['mass'], 5.287, 1e-3)
+        assert_rel_error(self, prob['mat1'], 3, 1e-5)
+        assert_rel_error(self, prob['mat2'], 3, 1e-5)
+        #Material 3 can be anything
 
     #def test_three_bar_truss_vector(self):
 
         #prob = Problem()
-        #root = prob.root = Group()
+        #model = prob.model = Group()
 
-        #root.add('xc_a', IndepVarComp('area', np.array([5.0, 5.0, 5.0])), promotes=['*'])
-        #root.add('xi_m', IndepVarComp('mat', np.array([1, 1, 1])), promotes=['*'])
-        #root.add('comp', ThreeBarTrussVector(), promotes=['*'])
+        #model.add('xc_a', IndepVarComp('area', np.array([5.0, 5.0, 5.0])), promotes=['*'])
+        #model.add('xi_m', IndepVarComp('mat', np.array([1, 1, 1])), promotes=['*'])
+        #model.add('comp', ThreeBarTrussVector(), promotes=['*'])
 
         #prob.driver = AMIEGO_driver()
         #prob.driver.cont_opt.options['tol'] = 1e-12
         ##prob.driver.options['disp'] = False
-        #root.deriv_options['type'] = 'fd'
+        #model.deriv_options['type'] = 'fd'
         #prob.driver.cont_opt = pyOptSparseDriver()
         #prob.driver.cont_opt.options['optimizer'] = 'SNOPT'
 
@@ -150,16 +150,16 @@ class TestAMIEGOdriver(unittest.TestCase):
     #def test_three_bar_truss_preopt(self):
 
         #prob = Problem()
-        #root = prob.root = Group()
+        #model = prob.model = Group()
 
-        #root.add('xc_a', IndepVarComp('area', np.array([5.0, 5.0, 5.0])), promotes=['*'])
-        #root.add('xi_m', IndepVarComp('mat', np.array([1, 1, 1])), promotes=['*'])
-        #root.add('comp', ThreeBarTrussVector(), promotes=['*'])
+        #model.add('xc_a', IndepVarComp('area', np.array([5.0, 5.0, 5.0])), promotes=['*'])
+        #model.add('xi_m', IndepVarComp('mat', np.array([1, 1, 1])), promotes=['*'])
+        #model.add('comp', ThreeBarTrussVector(), promotes=['*'])
 
         #prob.driver = AMIEGO_driver()
         #prob.driver.cont_opt.options['tol'] = 1e-12
         ##prob.driver.options['disp'] = False
-        #root.deriv_options['type'] = 'fd'
+        #model.deriv_options['type'] = 'fd'
         #prob.driver.cont_opt = pyOptSparseDriver()
         #prob.driver.cont_opt.options['optimizer'] = 'SNOPT'
 
@@ -205,16 +205,16 @@ class TestAMIEGOdriver(unittest.TestCase):
         #unittest.SkipTest('TODO: Make this a bit more robust.')
 
         #prob = Problem()
-        #root = prob.root = Group()
+        #model = prob.model = Group()
 
-        #root.add('p1', IndepVarComp('xC', np.array([0.0, 0.0, 0.0])), promotes=['*'])
-        #root.add('p2', IndepVarComp('xI', np.array([0, 0, 0])), promotes=['*'])
-        #root.add('comp', Greiwank(num_cont=3, num_int=3), promotes=['*'])
+        #model.add('p1', IndepVarComp('xC', np.array([0.0, 0.0, 0.0])), promotes=['*'])
+        #model.add('p2', IndepVarComp('xI', np.array([0, 0, 0])), promotes=['*'])
+        #model.add('comp', Greiwank(num_cont=3, num_int=3), promotes=['*'])
 
         #prob.driver = AMIEGO_driver()
         #prob.driver.cont_opt.options['tol'] = 1e-12
         #prob.driver.options['disp'] = True
-        #root.deriv_options['type'] = 'fd'
+        #model.deriv_options['type'] = 'fd'
 
         #prob.driver.add_desvar('xI', lower=-5, upper=5)
         #prob.driver.add_desvar('xC', lower=-5.0, upper=5.0)

@@ -294,13 +294,14 @@ def remove_leading_trailing_whitespace_lines(src):
     lines = src.splitlines()
 
     non_whitespace_lines = []
-    for i, l in enumerate( lines ):
+    for i, l in enumerate(lines):
         if l and not l.isspace():
             non_whitespace_lines.append(i)
     imin = min(non_whitespace_lines)
     imax = max(non_whitespace_lines)
 
     return '\n'.join(lines[imin: imax+1])
+
 
 def split_source_into_input_blocks(src):
     """
@@ -326,10 +327,10 @@ def split_source_into_input_blocks(src):
             line += '\n'
         in_code_block.append(line)
         if r.type == 'print' or \
-            ( len(r.value) == 3 and \
-            (r.type, r.value[0].type, r.value[1].type, r.value[2].type) == \
-                ('atomtrailers', 'name', 'name', 'call') and \
-                r.value[1].value in ['run_model', 'run_driver', 'setup'] ):
+            (len(r.value) == 3 and
+             (r.type, r.value[0].type, r.value[1].type, r.value[2].type) ==
+                ('atomtrailers', 'name', 'name', 'call') and
+                r.value[1].value in ['run_model', 'run_driver', 'setup']):
             # stop and make an input code block
             in_code_block = ''.join(in_code_block)
             in_code_block = remove_leading_trailing_whitespace_lines(in_code_block)
@@ -530,8 +531,13 @@ def get_test_src(method_path):
     class_name = method_path.split('.')[-2]
     method_name = method_path.split('.')[-1]
 
+    # make 'self' available to test code
+    self_code = "from %s import %s; self = %s('%s')" % \
+                (module_path, class_name, class_name, method_name)
+
     test_module = importlib.import_module(module_path)
     cls = getattr(test_module, class_name)
+
     try:
         import mpi4py
     except ImportError:
@@ -566,6 +572,7 @@ def get_test_src(method_path):
                 past_header = True
         else:
             newline = line[tab:]
+
         # exclude 'global' directives, not needed the way we are running things
         if not newline.startswith("global "):
             new_lines.append(newline)
@@ -595,19 +602,30 @@ def get_test_src(method_path):
     # 4. Insert extra print statements into source_minus_docstrings_with_prints_cleaned
     #        to indicate start and end of print Out blocks -> source_with_output_start_stop_indicators
     #-----------------------------------------------------------------------------------
-    source_with_output_start_stop_indicators = insert_output_start_stop_indicators( source_minus_docstrings_with_prints_cleaned )
+    source_with_output_start_stop_indicators = insert_output_start_stop_indicators(source_minus_docstrings_with_prints_cleaned)
 
-    #-----------------------------------------------------------------------------------
-    # 5. Run the test using source_with_out_start_stop_indicators -> run_outputs
+    #----------------`-------------------------------------------------------------------
+    # 5. Get all the pieces of code needed to run the unit test method
     #-----------------------------------------------------------------------------------
 
-    # Get all the pieces of code needed to run the unit test method
     global_imports = globals_for_imports(method_source)
-    teardown_source_code = get_method_body(inspect.getsource(getattr(cls, 'tearDown')))
+
+    # get setUp and tearDown but don't duplicate if it is the method being tested
+    setup_source_code = '' if method_name == 'setUp' else \
+        get_method_body(inspect.getsource(getattr(cls, 'setUp')))
+
+    teardown_source_code = '' if method_name == 'tearDown' else \
+        get_method_body(inspect.getsource(getattr(cls, 'tearDown')))
 
     code_to_run = '\n'.join([global_imports,
+                             self_code,
+                             setup_source_code,
                              source_with_output_start_stop_indicators,
                              teardown_source_code])
+
+    #-----------------------------------------------------------------------------------
+    # 6. Run the test using source_with_out_start_stop_indicators -> run_outputs
+    #-----------------------------------------------------------------------------------
 
     skipped = False
     failed = False
@@ -645,18 +663,10 @@ def get_test_src(method_path):
             sys.stdout = strout
             sys.stderr = strout
 
-            # Hacking, but trying to make sure we capture the check config messages.
+            # reset all the loggers
             from openmdao.utils.logger_utils import _loggers, get_logger
-            if 'check_config' not in _loggers:
-                get_logger('check_config', use_format=True)
-            if 'check_partials' not in _loggers:
-                get_logger('check_partials')
-            if 'check_totals' not in _loggers:
-                get_logger('check_totals')
-
-            _loggers['check_config']['logger'].handlers[0].stream = strout
-            _loggers['check_partials']['logger'].handlers[0].stream = strout
-            _loggers['check_totals']['logger'].handlers[0].stream = strout
+            for name in _loggers:
+                _loggers[name]['logger'].handlers[0].stream = strout
 
             # We need more precision from numpy
             save_opts = np.get_printoptions()

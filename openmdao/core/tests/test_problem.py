@@ -31,10 +31,76 @@ class TestProblem(unittest.TestCase):
         model.connect('p1.x', 'comp.x')
         model.connect('p2.y', 'comp.y')
 
-        prob.setup(check=False)
+        prob.setup()
         prob.run_model()
 
         assert_rel_error(self, prob['comp.f_xy'], -15.0)
+
+
+    def test_feature_simple_run_once_input_input(self):
+        from openmdao.api import Problem, Group, IndepVarComp
+        from openmdao.test_suite.components.paraboloid import Paraboloid
+
+        prob = Problem()
+        model = prob.model = Group()
+
+        model.add_subsystem('p1', IndepVarComp('x', 3.0))
+
+        #promote the two inputs to the same name
+        model.add_subsystem('comp1', Paraboloid(), promotes_inputs=['x'])
+        model.add_subsystem('comp2', Paraboloid(), promotes_inputs=['x'])
+
+        #connect the source to the common name
+        model.connect('p1.x', 'x')
+
+        prob.setup()
+        prob.run_model()
+
+        assert_rel_error(self, prob['comp1.f_xy'], 13.0)
+        assert_rel_error(self, prob['comp2.f_xy'], 13.0)
+
+    def test_feature_simple_run_once_compute_totals(self):
+        from openmdao.api import Problem, Group, IndepVarComp
+        from openmdao.test_suite.components.paraboloid import Paraboloid
+
+        prob = Problem()
+        model = prob.model = Group()
+
+        model.add_subsystem('p1', IndepVarComp('x', 3.0))
+        model.add_subsystem('p2', IndepVarComp('y', -4.0))
+        model.add_subsystem('comp', Paraboloid())
+
+        model.connect('p1.x', 'comp.x')
+        model.connect('p2.y', 'comp.y')
+
+        prob.setup()
+        prob.run_model()
+
+        assert_rel_error(self, prob['comp.f_xy'], -15.0)
+
+        prob.compute_totals(of=['comp.f_xy'], wrt=['p1.x', 'p2.y'])
+
+    def test_feature_simple_run_once_set_deriv_mode(self):
+        from openmdao.api import Problem, Group, IndepVarComp
+        from openmdao.test_suite.components.paraboloid import Paraboloid
+
+        prob = Problem()
+        model = prob.model = Group()
+
+        model.add_subsystem('p1', IndepVarComp('x', 3.0))
+        model.add_subsystem('p2', IndepVarComp('y', -4.0))
+        model.add_subsystem('comp', Paraboloid())
+
+        model.connect('p1.x', 'comp.x')
+        model.connect('p2.y', 'comp.y')
+
+        prob.setup(mode='rev')
+        #prob.setup(mode='fwd')
+        prob.run_model()
+
+        assert_rel_error(self, prob['comp.f_xy'], -15.0)
+
+        prob.compute_totals(of=['comp.f_xy'], wrt=['p1.x', 'p2.y'])
 
     def test_set_2d_array(self):
         import numpy as np
@@ -493,10 +559,58 @@ class TestProblem(unittest.TestCase):
         try:
             prob.setup(mode='junk')
         except ValueError as err:
-            msg = "Unsupported mode: 'junk'"
+            msg = "Unsupported mode: 'junk'. Use either 'fwd' or 'rev'."
             self.assertEqual(str(err), msg)
         else:
             self.fail('Expecting ValueError')
+
+    def test_setup_bad_mode_direction_fwd(self):
+
+        prob = Problem()
+        prob.model.add_subsystem("indep", IndepVarComp("x", np.ones(99)))
+        prob.model.add_subsystem("C1", ExecComp("y=2.0*x", x=np.zeros(10), y=np.zeros(10)))
+
+        prob.model.connect("indep.x", "C1.x", src_indices=list(range(10)))
+
+        prob.model.add_design_var("indep.x")
+        prob.model.add_objective("C1.y")
+
+        prob.setup(mode='fwd')
+
+        with warnings.catch_warnings(record=True) as w:
+            prob.final_setup()
+
+        self.assertEqual(len(w), 1)
+        self.assertTrue(issubclass(w[0].category, RuntimeWarning))
+        self.assertEqual(str(w[0].message),
+                         "Inefficient choice of derivative mode.  "
+                         "You chose 'fwd' for a problem with 99 design variables and 10 "
+                         "response variables (objectives and constraints).")
+
+    def test_setup_bad_mode_direction_rev(self):
+
+        prob = Problem()
+        prob.model.add_subsystem("indep", IndepVarComp("x", np.ones(10)))
+        prob.model.add_subsystem("C1", ExecComp("y=2.0*x", x=np.zeros(10), y=np.zeros(10)))
+        prob.model.add_subsystem("C2", ExecComp("y=2.0*x", x=np.zeros(10), y=np.zeros(10)))
+
+        prob.model.connect("indep.x", ["C1.x", "C2.x"])
+
+        prob.model.add_design_var("indep.x")
+        prob.model.add_constraint("C1.y")
+        prob.model.add_constraint("C2.y")
+
+        prob.setup(mode='rev')
+
+        with warnings.catch_warnings(record=True) as w:
+            prob.final_setup()
+
+        self.assertEqual(len(w), 1)
+        self.assertTrue(issubclass(w[0].category, RuntimeWarning))
+        self.assertEqual(str(w[0].message),
+                         "Inefficient choice of derivative mode.  "
+                         "You chose 'rev' for a problem with 10 design variables and 20 "
+                         "response variables (objectives and constraints).")
 
     def test_run_before_setup(self):
         # Test error message when running before setup.
