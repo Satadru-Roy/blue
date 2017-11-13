@@ -8,6 +8,7 @@ from openmdao.api import IndepVarComp, Group, Problem, ExecComp, pyOptSparseDriv
 from openmdao.devtools.testutil import assert_rel_error
 from openmdao.drivers.amiego_driver import AMIEGO_driver
 from openmdao.test_suite.components.branin import Branin
+from openmdao.test_suite.components.three_bar_truss import ThreeBarTruss
 from openmdao.utils.general_utils import set_pyoptsparse_opt
 
 # check that pyoptsparse is installed
@@ -80,12 +81,12 @@ class TestAMIEGOdriver(unittest.TestCase):
         prob.driver.cont_opt = pyOptSparseDriver()
         prob.driver.cont_opt.options['optimizer'] = 'SNOPT'
 
-        model.add_desvar('area1', lower=0.0005, upper=10.0)
-        model.add_desvar('area2', lower=0.0005, upper=10.0)
-        model.add_desvar('area3', lower=0.0005, upper=10.0)
-        model.add_desvar('mat1', lower=1, upper=4)
-        model.add_desvar('mat2', lower=1, upper=4)
-        model.add_desvar('mat3', lower=1, upper=4)
+        model.add_design_var('area1', lower=0.0005, upper=10.0)
+        model.add_design_var('area2', lower=0.0005, upper=10.0)
+        model.add_design_var('area3', lower=0.0005, upper=10.0)
+        model.add_design_var('mat1', lower=1, upper=4)
+        model.add_design_var('mat2', lower=1, upper=4)
+        model.add_design_var('mat3', lower=1, upper=4)
         model.add_objective('mass')
         model.add_constraint('stress', upper=1.0)
 

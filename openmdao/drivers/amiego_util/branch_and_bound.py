@@ -374,7 +374,7 @@ class Branch_and_Bound(Driver):
         nodeHist = nodeHistclass()
         UBD_term = UBD
 
-        comm = problem.root.comm
+        comm = problem.model.comm
         if self.load_balance:
 
             # Master/Worker config
