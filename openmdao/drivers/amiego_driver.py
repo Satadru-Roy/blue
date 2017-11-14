@@ -95,9 +95,9 @@ class AMIEGO_driver(Driver):
         self.surrogate = KrigingSurrogate
 
         self.c_dvs = []
-        self.i_dvs = []
         self.i_size = 0
         self.i_idx = {}
+        self.n_train = 0
 
         # Initial Sampling of integer design points
         # TODO: Somehow slot an object that generates this (LHC for example)
@@ -139,29 +139,36 @@ class AMIEGO_driver(Driver):
         minlp.options['disp'] = self.options['disp']
 
         # Identify and size our design variables.
-        j = 0
         prom2abs = problem.model._var_allprocs_prom2abs_list['output']
         sampling_abs_names = {}
+        i_dvs = []
         for name, data in iteritems(self.sampling):
             abs_name = prom2abs[name][0]
             sampling_abs_names[abs_name] = data
-            self.i_dvs.append(abs_name)
+            i_dvs.append(abs_name)
         self.sampling = sampling_abs_names
+        self.n_train = len(self.sampling[abs_name])
+
         for name, val in iteritems(self.get_design_var_values()):
-            if name in self.i_dvs:
+            if name in i_dvs:
                 i_size = len(val)
-                self.i_idx[name] = (j, j+i_size)
-                j += i_size
+                self.i_idx[name] = i_size
             else:
                 self.c_dvs.append(name)
+
+        j = 0
+        for var, idx in iteritems(self.i_idx):
+            idx_tuple = (j, j+idx)
+            j += idx
+            self.i_idx[var] = idx_tuple
         self.i_size = j
 
         # Lower and Upper bounds for integer desvars
         self.xI_lb = np.empty((self.i_size, ))
         self.xI_ub = np.empty((self.i_size, ))
         dv_dict = self._designvars
-        for var in self.i_dvs:
-            i, j = self.i_idx[var]
+        for var, idx in iteritems(self.i_idx):
+            i, j = idx
             self.xI_lb[i:j] = dv_dict[var]['lower']
             self.xI_ub[i:j] = dv_dict[var]['upper']
 
@@ -170,7 +177,7 @@ class AMIEGO_driver(Driver):
             cont_opt._designvars[name] = self._designvars[name]
 
         # MINLP Optimization only gets discrete desvars
-        for name in self.i_dvs:
+        for name in self.i_idx:
             minlp._designvars[name] = self._designvars[name]
 
         # It should be perfectly okay to 'share' obj and con with the
@@ -178,9 +185,8 @@ class AMIEGO_driver(Driver):
         minlp._cons = self._cons
         minlp._objs = self._objs
 
-        # Continuous optimizer is allowed to have some of its own
-        # constraints, which have already been specified by user.
-        #cont_opt._cons = self._cons
+        # Continuous optimizer sees all constraints.
+        cont_opt._cons = self._cons
         cont_opt._objs = self._objs
         for name, con in iteritems(self._cons):
             cont_opt._cons[name] = con
@@ -231,14 +237,14 @@ class AMIEGO_driver(Driver):
         # Start with pre-optimized samples
         if self.obj_sampling:
             pre_opt = True
-            n_train = len(self.sampling[self.i_dvs[0]])
+            n_train = len(self.sampling[self.i_idx[0]])
             c_start = c_end = n_train
 
             for i_train in range(n_train):
 
                 xx_i = np.empty((self.i_size, ))
-                for var in self.i_dvs:
-                    i, j = self.i_idx[var]
+                for var, idx in iteritems(self.i_idx):
+                    i, j = idx
                     xx_i[i:j] = self.sampling[var][i_train]
 
                     # Save the best design too (see below)
@@ -266,7 +272,7 @@ class AMIEGO_driver(Driver):
         else:
             best_obj = 1000.0
             pre_opt = False
-            n_train = self.sampling[self.i_dvs[0]].shape[0]
+            n_train = self.n_train
             c_start = 0
             c_end = n_train
 
@@ -274,10 +280,10 @@ class AMIEGO_driver(Driver):
 
                 xx_i = np.empty((self.i_size, ))
                 # xx_i_hat = np.empty((self.i_size, ))
-                for var in self.i_dvs:
+                for var, idx in iteritems(self.i_idx):
                     #lower = self._desvars[var]['lower']
                     #upper = self._desvars[var]['upper']
-                    i, j = self.i_idx[var]
+                    i, j = idx
 
                     #Samples should be bounded in a unit hypercube [0,1]
                     x_i_0 = self.sampling[var][i_train, :]
@@ -325,8 +331,8 @@ class AMIEGO_driver(Driver):
                           x_i[i_run])
 
                 # Set Integer design variables
-                for var in self.i_dvs:
-                    i, j = self.i_idx[var]
+                for var, idx in iteritems(self.i_idx):
+                    i, j = idx
                     self.set_design_var(var, x_i[i_run][i:j])
 
                 # Restore initial condition for continuous vars.
@@ -361,7 +367,7 @@ class AMIEGO_driver(Driver):
                     # Save integer and continuous DV
                     desvars = self.get_design_var_values()
 
-                    for name in self.i_dvs:
+                    for name in self.i_idx:
                         val = desvars[name]
                         best_int_design[name] = val.copy()
 
