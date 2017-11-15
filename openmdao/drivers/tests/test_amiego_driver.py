@@ -8,7 +8,7 @@ from openmdao.api import IndepVarComp, Group, Problem, ExecComp, pyOptSparseDriv
 from openmdao.devtools.testutil import assert_rel_error
 from openmdao.drivers.amiego_driver import AMIEGO_driver
 from openmdao.test_suite.components.branin import Branin
-from openmdao.test_suite.components.three_bar_truss import ThreeBarTruss
+from openmdao.test_suite.components.three_bar_truss import ThreeBarTruss, ThreeBarTrussVector
 from openmdao.utils.general_utils import set_pyoptsparse_opt
 
 # check that pyoptsparse is installed
@@ -29,7 +29,6 @@ class TestAMIEGOdriver(unittest.TestCase):
             raise unittest.SkipTest("SNOPT is needed to run this test")
 
     def test_simple_branin_opt(self):
-
         prob = Problem()
         model = prob.model = Group()
 
@@ -62,7 +61,6 @@ class TestAMIEGOdriver(unittest.TestCase):
         self.assertTrue(int(prob['p2.xI']) in [3, -3])
 
     def test_three_bar_truss(self):
-
         prob = Problem()
         model = prob.model = Group()
 
@@ -77,7 +75,7 @@ class TestAMIEGOdriver(unittest.TestCase):
         prob.driver = AMIEGO_driver()
         #prob.driver.cont_opt.options['tol'] = 1e-12
         #prob.driver.options['disp'] = False
-        #model.deriv_options['type'] = 'fd'
+        #model.approx_totals()
         prob.driver.cont_opt = pyOptSparseDriver()
         prob.driver.cont_opt.options['optimizer'] = 'SNOPT'
 
@@ -110,96 +108,57 @@ class TestAMIEGOdriver(unittest.TestCase):
         assert_rel_error(self, prob['mat2'], 3, 1e-5)
         #Material 3 can be anything
 
-    #def test_three_bar_truss_vector(self):
+    def test_three_bar_truss_preopt(self):
+        prob = Problem()
+        model = prob.model = Group()
 
-        #prob = Problem()
-        #model = prob.model = Group()
+        model.add_subsystem('xc_a', IndepVarComp('area', np.array([5.0, 5.0, 5.0])), promotes=['*'])
+        model.add_subsystem('xi_m', IndepVarComp('mat', np.array([1, 1, 1])), promotes=['*'])
+        model.add_subsystem('comp', ThreeBarTrussVector(), promotes=['*'])
 
-        #model.add('xc_a', IndepVarComp('area', np.array([5.0, 5.0, 5.0])), promotes=['*'])
-        #model.add('xi_m', IndepVarComp('mat', np.array([1, 1, 1])), promotes=['*'])
-        #model.add('comp', ThreeBarTrussVector(), promotes=['*'])
-
-        #prob.driver = AMIEGO_driver()
+        prob.driver = AMIEGO_driver()
         #prob.driver.cont_opt.options['tol'] = 1e-12
-        ##prob.driver.options['disp'] = False
+        #prob.driver.options['disp'] = False
         #model.deriv_options['type'] = 'fd'
-        #prob.driver.cont_opt = pyOptSparseDriver()
-        #prob.driver.cont_opt.options['optimizer'] = 'SNOPT'
+        prob.driver.cont_opt = pyOptSparseDriver()
+        prob.driver.cont_opt.options['optimizer'] = 'SNOPT'
 
-        #prob.driver.add_desvar('area', lower=0.0005, upper=10.0)
-        #prob.driver.add_desvar('mat', lower=1, upper=4)
-        #prob.driver.add_objective('mass')
-        #prob.driver.add_constraint('stress', upper=1.0)
+        model.add_design_var('area', lower=0.0005, upper=10.0)
+        model.add_design_var('mat', lower=1, upper=4)
+        model.add_objective('mass')
+        model.add_constraint('stress', upper=1.0)
 
-        #npt = 5
-        #samples = np.array([[4, 2, 3],
-                            #[1, 3, 1],
-                            #[3, 1, 2],
-                            #[3, 4, 2],
-                            #[1, 1, 4]])
-        #prob.driver.sampling = {'mat' : samples}
+        npt = 5
+        samples = [np.array([ 4.,  2.,  3.]),
+                   np.array([ 1.,  3.,  1.]),
+                   np.array([ 3.,  1.,  2.]),
+                   np.array([ 3.,  4.,  2.]),
+                   np.array([ 1.,  1.,  4.])]
 
-        #prob.setup(check=False)
+        obj_samples = [np.array([ 20.33476318]),
+                       np.array([ 15.70506904]),
+                       np.array([ 11.400119]),
+                       np.array([ 13.86862844]),
+                       np.array([ 7.8228])]
 
-        #prob.run()
+        con_samples = [np.array([ 1.21567329,  0.41459045,  0.11071787]),
+                       np.array([ 1.00000067,  0.37435478,  0.35066873]),
+                       np.array([ 0.49384779,  1.        ,  0.09501302]),
+                       np.array([ 1.00000027,  1.00000001,  0.91702834]),
+                       np.array([  1.299275,   1.052509,   0.694345])]
 
-        #assert_rel_error(self, prob['mass'], 5.287, 1e-3)
-        #assert_rel_error(self, prob['mat'][0], 3, 1e-5)
-        #assert_rel_error(self, prob['mat'][1], 3, 1e-5)
-        ## Material 3 can be anything
+        prob.driver.sampling = {'mat' : samples}
+        prob.driver.obj_sampling = {'mass' : obj_samples}
+        prob.driver.con_sampling = {'stress' : con_samples}
 
-    #def test_three_bar_truss_preopt(self):
+        prob.setup(check=False)
 
-        #prob = Problem()
-        #model = prob.model = Group()
+        prob.run_driver()
 
-        #model.add('xc_a', IndepVarComp('area', np.array([5.0, 5.0, 5.0])), promotes=['*'])
-        #model.add('xi_m', IndepVarComp('mat', np.array([1, 1, 1])), promotes=['*'])
-        #model.add('comp', ThreeBarTrussVector(), promotes=['*'])
-
-        #prob.driver = AMIEGO_driver()
-        #prob.driver.cont_opt.options['tol'] = 1e-12
-        ##prob.driver.options['disp'] = False
-        #model.deriv_options['type'] = 'fd'
-        #prob.driver.cont_opt = pyOptSparseDriver()
-        #prob.driver.cont_opt.options['optimizer'] = 'SNOPT'
-
-        #prob.driver.add_desvar('area', lower=0.0005, upper=10.0)
-        #prob.driver.add_desvar('mat', lower=1, upper=4)
-        #prob.driver.add_objective('mass')
-        #prob.driver.add_constraint('stress', upper=1.0)
-
-        #npt = 5
-        #samples = [np.array([ 4.,  2.,  3.]),
-                   #np.array([ 1.,  3.,  1.]),
-                   #np.array([ 3.,  1.,  2.]),
-                   #np.array([ 3.,  4.,  2.]),
-                   #np.array([ 1.,  1.,  4.])]
-
-        #obj_samples = [np.array([ 20.33476318]),
-                       #np.array([ 15.70506904]),
-                       #np.array([ 11.400119]),
-                       #np.array([ 13.86862844]),
-                       #np.array([ 6.15312764])]
-
-        #con_samples = [np.array([ 1.21567329,  0.41459045,  0.11071787]),
-                       #np.array([ 1.00000067,  0.37435478,  0.35066873]),
-                       #np.array([ 0.49384779,  1.        ,  0.09501302]),
-                       #np.array([ 1.00000027,  1.00000001,  0.91702834]),
-                       #np.array([  1.00000000e+00,   1.00000000e+00,   1.39230610e-08])]
-
-        #prob.driver.sampling = {'mat' : samples}
-        #prob.driver.obj_sampling = {'mass' : obj_samples}
-        #prob.driver.con_sampling = {'stress' : con_samples}
-
-        #prob.setup(check=False)
-
-        #prob.run()
-
-        #assert_rel_error(self, prob['mass'], 5.287, 1e-3)
-        #assert_rel_error(self, prob['mat'][0], 3, 1e-5)
-        #assert_rel_error(self, prob['mat'][1], 3, 1e-5)
-        ## Material 3 can be anything
+        assert_rel_error(self, prob['mass'], 5.287, 1e-3)
+        assert_rel_error(self, prob['mat'][0], 3, 1e-5)
+        assert_rel_error(self, prob['mat'][1], 3, 1e-5)
+        # Material 3 can be anything
 
     #def test_simple_greiwank_opt(self):
 

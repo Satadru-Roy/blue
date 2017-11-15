@@ -113,7 +113,7 @@ class ThreeBarTruss(ExplicitComponent):
                          3 : 285.0e6,
                          4 : 59.0e6 }
 
-        self.declare_partials(of='*', wrt='*', type='fd')
+        self.declare_partials(of='*', wrt='area*', method='fd')
 
     def compute(self, inputs, outputs):
         """
@@ -122,17 +122,14 @@ class ThreeBarTruss(ExplicitComponent):
         Here xI is integer and xC is continuous.
         """
 
-        area1 = inputs['area1']
-        area2 = inputs['area2']
-        area3 = inputs['area3']
+        # Convert areas to m**2
+        area1 = inputs['area1']*.0001
+        area2 = inputs['area2']*.0001
+        area3 = inputs['area3']*.0001
         mat1 = int(inputs['mat1'])
         mat2 = int(inputs['mat2'])
         mat3 = int(inputs['mat3'])
-
-        # Convert to meters^2 from cm^2
-        area1 /= 1.0e4
-        area2 /= 1.0e4
-        area3 /= 1.0e4
+        area1 *= 2.
 
         len1 = np.sqrt(1.2**2 + 1.2**2)
         len2 = 1.2
@@ -181,12 +178,12 @@ class ThreeBarTrussVector(ExplicitComponent):
                        desc='Cross-sectional area of beams')
 
         # Discrete Inputs
-        self.add_input('mat', np.array([1, 1, 1]), lower=1, upper=4,
+        self.add_input('mat', np.array([1, 1, 1]), #lower=1, upper=4,
                        desc='Material ID of beams')
 
         # Outputs
         self.add_output('mass', val=0.0)
-        self.add_output('stress', val=np.zeros((3, 1)))
+        self.add_output('stress', val=np.zeros((3, )))
 
         self.rho = { 1 : 2700.0,
                      2 : 4500.0,
@@ -203,34 +200,35 @@ class ThreeBarTrussVector(ExplicitComponent):
                          3 : 285.0e6,
                          4 : 59.0e6 }
 
-        self.declare_partials(of='*', wrt='*', type='fd')
+        self.declare_partials(of='*', wrt='area', method='fd')
 
     def compute(self, inputs, outputs):
         """ Define the function f(xI, xC)
         Here xI is integer and xC is continuous"""
 
-        area = inputs['area']
+        # Area convert to m**2
+        area = inputs['area']*.0001
         mat = inputs['mat']
-
-        # Convert to meters^2 from cm^2
-        area /= 1.0e4
 
         length = np.array([np.sqrt(1.2**2 + 1.2**2),
                           1.2,
                           np.sqrt(1.2**2 + 1.2**2)])
 
-        rho = np.zeros((3))
-        rho[0] = self.rho[mat[0]]
+        rho = np.zeros((3, ))
+        try:
+            rho[0] = self.rho[mat[0]]
+        except:
+            pass
         rho[1] = self.rho[mat[1]]
         rho[2] = self.rho[mat[2]]
 
         outputs['mass'] = np.sum(rho*area*length)
 
-        E = np.zeros((3))
+        E = np.zeros((3, ))
         E[0] = self.E[mat[0]]
         E[1] = self.E[mat[1]]
         E[2] = self.E[mat[2]]
-        sigma_y = np.zeros((3))
+        sigma_y = np.zeros((3, ))
 
         sigma_y[0] = self.sigma_y[mat[0]]
         sigma_y[1] = self.sigma_y[mat[1]]

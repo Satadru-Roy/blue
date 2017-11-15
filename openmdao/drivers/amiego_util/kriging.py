@@ -130,7 +130,7 @@ class KrigingSurrogate(SurrogateModel):
         self.Wstar = np.identity(0)
         self.pcom=0
 
-        # Hack: Put the comm here
+        # Put the comm here
         self.comm = None
 
     def train(self, x, y, KPLS_status=False):
@@ -397,7 +397,6 @@ class KrigingSurrogate(SurrogateModel):
         y_t = self.mu + np.dot(r.T, self.c_r)
         y = self.Y_mean + self.Y_std * y_t
 
-
         if self.eval_rmse:
             one = np.ones([self.n_samples,1])
             mse  = self.SigmaSqr*(1.0 - np.dot(r.T,np.dot(self.R_inv,r)) + \
@@ -434,16 +433,16 @@ class KrigingSurrogate(SurrogateModel):
         return jac
 
     def KPLS_reg(self):
-        def power_iter(X,y):
+        def power_iter(X, y):
             A = np.dot(np.dot(X.T,y),np.dot(y.T,X))
             qk = np.zeros([A.shape[0],1])
             qk[0] = 1.0
             kk=0.
             delta = 1.0
             qk_prev = qk
-            while delta>1.0e-6:
+            while delta > 1.0e-6:
                 kk = kk + 1.
-                zk = np.dot(A,qk)
+                zk = np.dot(A, qk)
                 qk = zk/np.linalg.norm(zk)
                 delta = np.linalg.norm(qk - qk_prev)
                 qk_prev = qk
@@ -453,26 +452,19 @@ class KrigingSurrogate(SurrogateModel):
         yl = self.Y
         k = self.n_dims
         for l in range(self.pcom):
-            wl = power_iter(Xl,yl)
-            tl = np.dot(Xl,wl)
-            tl_hat = tl/(np.dot(tl.T,tl))
-            pl = (np.dot(Xl.T,tl_hat)).T
-            cl = np.dot(yl.T,tl_hat)
+            wl = power_iter(Xl, yl)
+            tl = np.dot(Xl, wl)
+            tl_hat = tl/(np.dot(tl.T, tl))
+            pl = (np.dot(Xl.T, tl_hat)).T
+            cl = np.dot(yl.T, tl_hat)
             if l == 0: #FIXME: Re-code this
                 W = wl*1.0
                 P = pl.T*1.0
             else:
-                W = np.concatenate((W,wl), axis=1)
-                P = np.concatenate((P,pl.T), axis=1)
-            Xl = Xl - np.dot(tl,pl)
+                W = np.concatenate((W, wl), axis=1)
+                P = np.concatenate((P, pl.T), axis=1)
+            Xl = Xl - np.dot(tl, pl)
             yl = yl - cl*tl
-        Wstar = np.dot(W,np.linalg.inv(np.dot(P.T,W))) #TODO: See if there are better ways to do inverse
+        Wstar = np.dot(W, np.linalg.inv(np.dot(P.T, W))) #TODO: See if there are better ways to do inverse
         return Wstar
 
-class FloatKrigingSurrogate(KrigingSurrogate):
-    """Surrogate model based on the simple Kriging interpolation. Predictions are returned as floats,
-    which are the mean of the model's prediction."""
-
-    def predict(self, x):
-        dist = super(FloatKrigingSurrogate, self).predict(x)
-        return dist[0]  # mean value

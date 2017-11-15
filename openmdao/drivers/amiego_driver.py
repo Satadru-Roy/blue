@@ -149,6 +149,20 @@ class AMIEGO_driver(Driver):
         self.sampling = sampling_abs_names
         self.n_train = len(self.sampling[abs_name])
 
+        obj_sampling_abs_names = {}
+        if self.obj_sampling is not None:
+            for name, data in iteritems(self.obj_sampling):
+                abs_name = prom2abs[name][0]
+                obj_sampling_abs_names[abs_name] = data
+            self.obj_sampling = obj_sampling_abs_names
+
+        con_sampling_abs_names = {}
+        if self.con_sampling is not None:
+            for name, data in iteritems(self.con_sampling):
+                abs_name = prom2abs[name][0]
+                con_sampling_abs_names[abs_name] = data
+            self.con_sampling = con_sampling_abs_names
+
         for name, val in iteritems(self.get_design_var_values()):
             if name in i_dvs:
                 i_size = len(val)
@@ -180,9 +194,8 @@ class AMIEGO_driver(Driver):
         for name in self.i_idx:
             minlp._designvars[name] = self._designvars[name]
 
-        # It should be perfectly okay to 'share' obj and con with the
+        # It should be perfectly okay to 'share' obj with the
         # MINLP optimizers.
-        minlp._cons = self._cons
         minlp._objs = self._objs
 
         # Continuous optimizer sees all constraints.
@@ -231,13 +244,13 @@ class AMIEGO_driver(Driver):
         cons = {}
         best_int_design = {}
         best_cont_design = {}
+        n_train = self.n_train
         for con in self._cons:
             cons[con] = []
 
         # Start with pre-optimized samples
         if self.obj_sampling:
             pre_opt = True
-            n_train = len(self.sampling[self.i_idx[0]])
             c_start = c_end = n_train
 
             for i_train in range(n_train):
@@ -253,7 +266,7 @@ class AMIEGO_driver(Driver):
 
                 x_i.append(xx_i)
 
-            current_objs = self.get_objectives()
+            current_objs = self.get_objective_values()
             obj_name = list(current_objs.keys())[0]
             obj = self.obj_sampling[obj_name]
             cons = self.con_sampling
@@ -272,7 +285,6 @@ class AMIEGO_driver(Driver):
         else:
             best_obj = 1000.0
             pre_opt = False
-            n_train = self.n_train
             c_start = 0
             c_end = n_train
 
@@ -418,7 +430,7 @@ class AMIEGO_driver(Driver):
                     obj[ii] = obj[ii]/(1.0 + r_pen*P[ii]/num_vio[ii])
 
             obj_surrogate = self.surrogate()
-            obj_surrogate.comm = problem.root.comm
+            obj_surrogate.comm = problem.model.comm
             obj_surrogate.use_snopt = True
             obj_surrogate.train(x_i, obj, KPLS_status=True)
 
@@ -428,8 +440,6 @@ class AMIEGO_driver(Driver):
             obj_surrogate.lb = np.zeros((n_i))
             obj_surrogate.ub = np.zeros((n_i))
             best_obj_norm = (best_obj - obj_surrogate.Y_mean)/obj_surrogate.Y_std
-
-            con_surrogate = []
 
             if disp:
                 print("\nSurrogate building of the objective is complete...")
@@ -448,7 +458,6 @@ class AMIEGO_driver(Driver):
             if pre_opt or tot_newpt_added != tot_pt_prev:
 
                 minlp.obj_surrogate = obj_surrogate
-                minlp.con_surrogate = con_surrogate
                 minlp.xI_lb = xI_lb
                 minlp.xI_ub = xI_ub
 
