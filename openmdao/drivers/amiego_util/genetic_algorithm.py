@@ -83,6 +83,7 @@ class Genetic_Algorithm():
 
     def crossover(self, old_gen, Pc):
         new_gen = copy.deepcopy(old_gen)
+        print('xover', self.npop, self.lchrom)
         sites = np.random.rand(self.npop/2, self.lchrom)
         for i in range(self.npop/2):
             for j in range(self.lchrom):
