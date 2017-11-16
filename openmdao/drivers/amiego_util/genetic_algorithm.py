@@ -26,7 +26,7 @@ class Genetic_Algorithm():
         if np.mod(pop_size,2) == 1:
             pop_size += 1
         self.npop = int(pop_size)
-        fitness = np.zeros((self.npop,1))
+        fitness = np.zeros((self.npop, 1))
         Pm = (self.lchrom + 1.0) / (2.0 * pop_size * np.sum(bits))
         elite = 1
         # new_gen = 1 - np.round(np.random.rand(self.npop,self.lchrom))
@@ -83,9 +83,8 @@ class Genetic_Algorithm():
 
     def crossover(self, old_gen, Pc):
         new_gen = copy.deepcopy(old_gen)
-        print('xover', self.npop, self.lchrom)
-        sites = np.random.rand(self.npop/2, self.lchrom)
-        for i in range(self.npop/2):
+        sites = np.random.rand(self.npop//2, self.lchrom)
+        for i in range(self.npop//2):
             for j in range(self.lchrom):
                 if sites[i][j] < Pc:
                     new_gen[2*i][j] = old_gen[2*i+1][j]
