@@ -22,7 +22,6 @@ from collections import OrderedDict
 from time import time
 from six import iteritems
 from six.moves import range
-from random import uniform
 
 import numpy as np
 from scipy.optimize import minimize
@@ -34,7 +33,7 @@ from openmdao.drivers.amiego_util.genetic_algorithm import Genetic_Algorithm
 from openmdao.drivers.amiego_util.kriging import KrigingSurrogate
 from openmdao.utils.concurrent import concurrent_eval, concurrent_eval_lb
 from openmdao.utils.general_utils import set_pyoptsparse_opt
-from openmdao.utils.mpi import debug, FakeComm
+from openmdao.utils.mpi import FakeComm
 
 # check that pyoptsparse is installed
 # if it is, try to use SNOPT but fall back to SLSQP
@@ -210,7 +209,6 @@ class Branch_and_Bound(Driver):
         # Initial Sampling
         # TODO: Somehow slot an object that generates this (LHC for example)
         self.sampling = {}
-        self.bad_samples = []
 
         self.dvs = []
         self.size = 0
@@ -694,32 +692,14 @@ class Branch_and_Bound(Driver):
 
         X = obj_surrogate.X
         k = np.shape(X)[1]
-        lb = obj_surrogate.lb
-        ub = obj_surrogate.ub
 
         # Normalized as per the convention in Kriging of openmdao
         xval = (xI - obj_surrogate.X_mean.flatten())/obj_surrogate.X_std.flatten()
-        # xval = (xI - obj_surrogate.lb_org.flatten())/(obj_surrogate.ub_org.flatten() - obj_surrogate.lb_org.flatten())
 
         NegEI = calc_conEI_norm(xval, obj_surrogate)
 
         P = 0.0
-        # if self.options['concave_EI']: #Locally makes ei concave to get rid of flat objective space
-        #if con_EI:
-            #con_fac = self.con_fac
-            #for ii in range(k):
-                #P += con_fac[ii]*(lb[ii] - xval[ii])*(ub[ii] - xval[ii])
-
         f = NegEI + P
-
-        # START OF RADIAL PENALIZATION ADDENDUM
-        #pfactor = self.options['penalty_factor']
-        #width = self.options['penalty_width']
-        #if pfactor != 0:
-            #for xbad in self.bad_samples:
-                #xbad_norm = (xbad - obj_surrogate.X_mean.flatten())/obj_surrogate.X_std.flatten()
-                #f += pfactor * np.sum(np.exp(-1./width**2 * (xbad_norm - xval)**2))
-        # END OF RADIAL PENALIZATION ADDENDUM
 
         #print(xI, f)
         return f

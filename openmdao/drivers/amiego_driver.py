@@ -14,8 +14,6 @@ Implemented in OpenMDAO, Aug 2016, Kenneth T. Moore
 from __future__ import print_function
 
 from collections import OrderedDict
-from copy import deepcopy
-from itertools import chain
 from time import time
 
 from six import iteritems
@@ -47,16 +45,15 @@ class AMIEGO_driver(Driver):
     -------
     options['ei_tol_rel'] :  0.001
         Relative tolerance on the expected improvement.
-    options['ei_tol_abs'] :  0.001
-        Absolute tolerance on the expected improvement.
     options['max_infill_points'] : 10
         Ratio of maximum number of additional points to number of initial
         points.
+    options['r_penalty'] : 1.0
+        Constraint penalty applied to objective for surrogate model.
     """
 
     def __init__(self):
         """Initialize the AMIEGO driver."""
-
         super(AMIEGO_driver, self).__init__()
 
         # What we support
@@ -67,9 +64,7 @@ class AMIEGO_driver(Driver):
         self.supports['linear_constraints'] = False
         self.supports['gradients'] = True
         self.supports['mixed_integer'] = True
-
-        # TODO - I started working on this, but needs tests and a bug fix
-        self.supports['two_sided_constraints'] = False
+        self.supports['two_sided_constraints'] = True
 
         # Options
         opt = self.options
@@ -77,8 +72,6 @@ class AMIEGO_driver(Driver):
                     desc='Set to False to prevent printing of iteration messages.')
         opt.declare('ei_tol_rel', 0.001, lower=0.0,
                     desc='Relative tolerance on the expected improvement.')
-        opt.declare('ei_tol_abs', 0.001, lower=0.0,
-                    desc='Absolute tolerance on the expected improvement.')
         opt.declare('max_infill_points', 10, lower=1.0,
                     desc='Ratio of maximum number of additional points to number of initial '
                     'points.')
@@ -127,6 +120,7 @@ class AMIEGO_driver(Driver):
         """
         super(AMIEGO_driver, self)._setup_driver(problem, assemble_var_info)
 
+        # Need to clean out anything in the continuous optimizer first.
         cont_opt = self.cont_opt
         cont_opt._cons = OrderedDict()
         cont_opt._objs = OrderedDict()
@@ -201,7 +195,6 @@ class AMIEGO_driver(Driver):
         minlp._objs = self._objs
 
         # Continuous optimizer sees all constraints.
-        cont_opt._cons = self._cons
         cont_opt._objs = self._objs
         for name, con in iteritems(self._cons):
             cont_opt._cons[name] = con
@@ -221,7 +214,6 @@ class AMIEGO_driver(Driver):
         problem = self._problem
         n_i = self.i_size
         ei_tol_rel = self.options['ei_tol_rel']
-        ei_tol_abs = self.options['ei_tol_abs']
         disp = self.options['disp']
         r_pen = self.options['r_penalty']
         cont_opt = self.cont_opt
@@ -250,7 +242,7 @@ class AMIEGO_driver(Driver):
         for con in self._cons:
             cons[con] = []
 
-        # Start with pre-optimized samples
+        # Start with pre-optimized samples.
         if self.obj_sampling:
             pre_opt = True
             c_start = c_end = n_train
@@ -273,14 +265,17 @@ class AMIEGO_driver(Driver):
             obj = self.obj_sampling[obj_name]
             cons = self.con_sampling
 
+            # Satadru's suggestion is that we start with the first point as
+            # the best obj.
             lowest = 0
+
+            # However, if we know which cases were infeasible, then we can find the lowest
+            # objective.
             if self.sampling_eflag is not None:
                 for j, val in enumerate(obj):
                     if self.sampling_eflag[j] == 1 and (val < obj[lowest]):
                         lowest = j
 
-            # Satadru's suggestion is that we start with the first point as
-            # the best obj.
             best_obj = obj[lowest].copy()
 
         # Prepare to optimize the initial sampling points
@@ -293,19 +288,10 @@ class AMIEGO_driver(Driver):
             for i_train in range(n_train):
 
                 xx_i = np.empty((self.i_size, ))
-                for var, idx in iteritems(self.i_idx):
-                    #lower = self._desvars[var]['lower']
-                    #upper = self._desvars[var]['upper']
+                for name, idx in iteritems(self.i_idx):
                     i, j = idx
+                    xx_i[i:j] = self.sampling[name][i_train, :]
 
-                    #Samples should be bounded in a unit hypercube [0,1]
-                    x_i_0 = self.sampling[var][i_train, :]
-
-                    # Now, we are no longer normalizing the integer inputs. So
-                    # the integer design variables are in the original design
-                    # space.
-                    #xx_i[i:j] = np.round(lower + x_i_0 * (upper - lower))
-                    xx_i[i:j] = x_i_0
                 x_i.append(xx_i)
 
         # Need to cache the continuous desvars so that we start each new
@@ -335,6 +321,9 @@ class AMIEGO_driver(Driver):
                 print("======================ContinuousOptimization-Start=====================================")
                 t0 = time()
 
+            # In initial iteration, we only optimize points if we don't have samples of the cons
+            # and objs.
+            # In subsequent iterations, we just optimize the new candidate point.
             for i_run in range(c_start, c_end):
 
                 if disp:
@@ -346,7 +335,7 @@ class AMIEGO_driver(Driver):
                     i, j = idx
                     self.set_design_var(var, x_i[i_run][i:j])
 
-                # Restore initial condition for continuous vars.
+                # Restore initial condition for all continuous vars.
                 for var, val in iteritems(xc_cache):
                     cont_opt.set_design_var(var, val)
 
@@ -361,10 +350,7 @@ class AMIEGO_driver(Driver):
                 if disp:
                     print("Exit Flag:", eflag_conopt)
 
-                if not eflag_conopt:
-                    self.minlp.bad_samples.append(x_i[i_run])
-
-                # Get objectives and constraints (TODO)
+                # Get objectives and constraints.
                 current_objs = self.get_objective_values()
                 obj_name = list(current_objs.keys())[0]
                 current_obj = current_objs[obj_name].copy()
@@ -394,7 +380,7 @@ class AMIEGO_driver(Driver):
             # Step 3: Build the surrogate models
             #------------------------------------------------------------------
             n = len(x_i)
-            P = np.zeros((n,1))
+            P = np.zeros((n, 1))
 
             #TODO: Scale back the objective to the original Value
             # As Kriging objective is normalized separately
@@ -409,24 +395,18 @@ class AMIEGO_driver(Driver):
                 # when positive, so we need to transform from OpenMDAO's
                 # freeform.
                 meta = self._cons[name]
-                upper = meta['upper']
-                lower = meta['lower']
-                double_sided = False
-                if lower is None:
-                    val = val - upper
-                elif upper is None:
-                    val = lower - val
-                else:
-                    double_sided = True
-                    val_u = val - upper
-                    val_l = lower - val
+                val_u = val - meta['upper']
+                val_l = meta['lower'] - val
 
                 # Newly added to make the problem appear unconstrained to Amiego
                 M = val.shape[1]
                 for ii in range(n):
                     for mm in range(M):
-                        if val[ii][mm] > 0:
-                            P[ii] += (val[ii][mm])**2
+                        if val_u[ii][mm] > 0:
+                            P[ii] += (val_u[ii][mm])**2
+                            num_vio[ii] += 1
+                        elif val_l[ii][mm] > 0:
+                            P[ii] += (val_l[ii][mm])**2
                             num_vio[ii] += 1
 
             for ii in range(n):
@@ -434,15 +414,9 @@ class AMIEGO_driver(Driver):
                     obj_surr[ii] = obj_surr[ii]/(1.0 + r_pen*P[ii]/num_vio[ii])
 
             obj_surrogate = self.surrogate()
-            obj_surrogate.comm = problem.model.comm
-            obj_surrogate.use_snopt = True
             obj_surrogate.train(x_i, obj_surr, KPLS_status=True)
 
             obj_surrogate.y = obj_surr
-            obj_surrogate.lb_org = xI_lb
-            obj_surrogate.ub_org = xI_ub
-            obj_surrogate.lb = np.zeros((n_i))
-            obj_surrogate.ub = np.zeros((n_i))
             best_obj_norm = (best_obj - obj_surrogate.Y_mean)/obj_surrogate.Y_std
 
             if disp:
@@ -482,8 +456,6 @@ class AMIEGO_driver(Driver):
 
                 if eflag_MINLPBB >= 1:
 
-                    # x0I_hat = (x0I - xI_lb)/(xI_ub - xI_lb)
-
                     ei_max = -ei_min
                     tot_pt_prev = tot_newpt_added
 
@@ -502,6 +474,7 @@ class AMIEGO_driver(Driver):
                                 print("Point already exists!")
                             ec2 = 1
                             break
+
                     x_i.append(x0I)
 
                 else:
@@ -516,11 +489,6 @@ class AMIEGO_driver(Driver):
             c_start = c_end
             c_end += 1
 
-            # # 1e-6 is the switchover from rel to abs.
-            # if np.abs(best_obj)<= 1.0e-6:
-            #     term = ei_tol_abs
-            # else:
-            #     term = np.max(np.array([np.abs(ei_tol_rel*best_obj), ei_tol_abs]))
             term  = np.abs(ei_tol_rel*best_obj_norm)
             if (not pre_opt and ei_max <= term) or ec2 == 1 or tot_newpt_added >= max_pt_lim:
                 terminate = True
@@ -547,11 +515,14 @@ class AMIEGO_driver(Driver):
             print("\n===================Result Summary====================")
             print("The best objective: %0.4f" % best_obj)
             print("Total number of continuous minimization: %d" % len(x_i))
-            #print("Total number of objective function evaluation: %d" % Tot_FunCount)
             print("Best Integer designs: ", best_int_design)
             print("Corresponding continuous designs: ", best_cont_design)
             print("=====================================================")
 
     def pre_cont_opt_hook(self):
-        """ Override this to perform any pre-continuous-optimization operations."""
+        """
+        Perform calculations prior to continuous optimization.
+
+        Override this to perform any pre-continuous-optimization operations.
+        """
         pass
