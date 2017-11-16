@@ -19,6 +19,7 @@ Implemented in OpenMDAO, Aug 2016, Kenneth T. Moore
 from __future__ import print_function
 
 from collections import OrderedDict
+from time import time
 from six import iteritems
 from six.moves import range
 from random import uniform
@@ -26,8 +27,10 @@ from random import uniform
 import numpy as np
 from scipy.optimize import minimize
 from scipy.special import erf
+from pyDOE import lhs
 
 from openmdao.core.driver import Driver
+from openmdao.drivers.amiego_util.genetic_algorithm import Genetic_Algorithm
 from openmdao.drivers.amiego_util.kriging import KrigingSurrogate
 from openmdao.utils.concurrent import concurrent_eval, concurrent_eval_lb
 from openmdao.utils.general_utils import set_pyoptsparse_opt
@@ -191,16 +194,18 @@ class Branch_and_Bound(Driver):
                     desc='Penalty weight on objective using radial functions.')
         opt.declare('penalty_width', 0.5,
                     desc='Penalty width on objective using radial functions.')
-        opt.declare('trace_iter', 10,
+        opt.declare('trace_iter', 3,
                     desc='Number of generations to trace back for ubd.')
+        opt.declare('trace_iter_max', 5,
+                    desc='Maximum number of generations to trace back for ubd.')
         opt.declare('maxiter_ubd', 10000,
                     desc='Number of generations ubd stays the same')
         opt.declare('use_surrogate', False,
                     desc='Use surrogate model for the optimization. Training '
                     'data must be supplied.')
-        opt.declare('local_search', True,
-                    desc='Set to True if local search needs to be performed '
-                    'in step 2.')
+        opt.declare('local_search', 0, values=[0, 1, 2],
+                    desc='Local search type. Set to 0 for GA, 1 for LHS, 2 for LHS + SQP '
+                    '(Default = 0)')
 
         # Initial Sampling
         # TODO: Somehow slot an object that generates this (LHC for example)
@@ -227,7 +232,7 @@ class Branch_and_Bound(Driver):
 
         # Experimental Options. TODO: could go into Options
         self.load_balance = True
-        self.aggressive_splitting = True
+        self.aggressive_splitting = False
 
     def _setup_driver(self, problem, assemble_var_info=True):
         """
@@ -282,38 +287,10 @@ class Branch_and_Bound(Driver):
 
         self.iter_count = 1
 
-        # Calculate intermediate statistics. This stuff used to be stored in
-        # the Modelinfo object, but more convenient to store it in the
-        # Kriging surrogate.
-
-        n_train = obj_surrogate.X.shape[0]
-        one = np.ones([n_train,1])
         if obj_surrogate:
-
-            # TODO: mvp in Kriging
-            # R_inv = obj_surrogate.Vh.T.dot(np.einsum('i,ij->ij',
-                                                            #    obj_surrogate.S_inv,
-                                                            #    obj_surrogate.U.T))
-            # obj_surrogate.R_inv = R_inv
-
-            # obj_surrogate.mu = np.dot(one.T,np.dot(R_inv,obj_surrogate.Y))/np.dot(one.T,np.dot(R_inv,one))
-            #
-            # obj_surrogate.SigmaSqr = np.dot((obj_surrogate.Y - one*obj_surrogate.mu).T,np.dot(R_inv,(obj_surrogate.Y-one*obj_surrogate.mu)))/n_train
-
-            # TODO: norm type, should probably always be 2 (Yes for sure)
             obj_surrogate.p = 2
-
-            # obj_surrogate.c_r = np.dot(R_inv,(obj_surrogate.Y-one*obj_surrogate.mu))
-
-            ## This is also done in Ameigo. TODO: just do it once.
-            obj_surrogate.y_best = np.min(obj_surrogate.Y) #TODO If you are using Y value from obj_surrogate, no need to normalize in the calc_conEI_norm function
-
-            ## This is the rest of the interface that any "surrogate" needs to contain.
-            ##obj_surrogate.X = surrogate.X
-            ##obj_surrogate.ynorm = surrogate.Y
-            ##obj_surrogate.thetas = surrogate.thetas
-            ##obj_surrogate.X_std = obj_surrogate.X_std.reshape(num_xI,1)
-            ##obj_surrogate.X_mean = obj_surrogate.X_mean.reshape(num_xI,1)
+            obj_surrogate.y_best = np.min(obj_surrogate.Y)
+            #TODO If you are using Y value from obj_surrogate, no need to normalize in the calc_conEI_norm function
 
         #----------------------------------------------------------------------
         # Step 1: Initialize
@@ -335,14 +312,10 @@ class Branch_and_Bound(Driver):
         xL_iter = self.xI_lb.copy()
         xU_iter = self.xI_ub.copy()
 
-        #TODO: Generate as many random samples as number of available procs in parallel
-        #TODO: Use some intelligent sampling rather than random
-        # Initial (good) optimal objective and solution
-        # Randomly generate some integer points
-        for ii in range(10*num_des):
-            xopt_ii = np.round(xL_iter + np.random.random(num_des)*(xU_iter - xL_iter)).reshape(num_des)
-            # Use this one for verification against matlab
-            # xopt = 2.0*np.ones((num_des))
+        num_init_sam = num_des
+        init_sam = lhs(num_des, samples=num_init_sam, criterion='center')
+        for ii in range(num_init_sam):
+            xopt_ii = np.round(xL_iter + init_sam[ii]*(xU_iter - xL_iter)).reshape(num_des)
             fopt_ii = self.objective_callback(xopt_ii)
             if fopt_ii < UBD:
                 self.eflag_MINLPBB = True
@@ -505,143 +478,190 @@ class Branch_and_Bound(Driver):
         active_tol = self.options['active_tol']
         local_search = self.options['local_search']
         disp = self.options['disp']
+        trace_iter = self.options['trace_iter']
+        trace_iter_max = self.options['trace_iter_max']
+
         obj_surrogate = self.obj_surrogate
         num_des = len(self.xI_lb)
-        trace_iter = self.options['trace_iter']
 
         new_nodes = []
 
         #Keep this to 0.49 to always round towards bottom-left
         xloc_iter = np.round(xL_iter + 0.49*(xU_iter - xL_iter))
         floc_iter = self.objective_callback(xloc_iter)
+        efloc_iter = True
 
-        #Sample few more points based on ubd_count and priority_flag
-        agg_fac = [0.5, 1.0, 1.5]
-        ubd_denom = self.options['maxiter_ubd']/len(agg_fac)
-        num_samples = np.round(agg_fac[int(np.floor(ubd_count/ubd_denom))]*(1 + 3*nodeHist.priority_flag)*3*num_des)
-        for ii in range(int(num_samples)):
-            xloc_iter_new = np.round(xL_iter + np.random.random(num_des)*(xU_iter - xL_iter))
-            floc_iter_new = self.objective_callback(xloc_iter_new)
+        # Genetic Algorithm
+        if local_search == 0:
+
+            ga = Genetic_Algorithm(calc_conEI_norm)
+
+            bits = np.zeros((num_des,1),dtype = int)
+            bits = np.ceil(np.log2(xU_iter - xL_iter + 1))
+            bits[bits<=0] =1
+            vub_vir = (2**bits - 1) + xL_iter
+            if nodeHist.priority_flag == 1:
+                max_gen=300
+                mfac=6
+            else:
+                max_gen=200
+                mfac=4
+            L = np.sum(bits)
+            pop_size = mfac*L
+
+            t0 = time()
+            xloc_iter_new, floc_iter_new, nfit = \
+                ga.execute_ga(xL_iter, vub_vir, bits, pop_size, max_gen, obj_surrogate, xU_iter)
+            t_GA = time() - t0
+
             if floc_iter_new < floc_iter:
                 floc_iter = floc_iter_new
                 xloc_iter = xloc_iter_new
-        efloc_iter = True
-        if local_search:
-            trace_iter = 3
-            if np.abs(floc_iter) > active_tol: #Perform at non-flat starting point
-                #--------------------------------------------------------------
-                #Step 2: Obtain a local solution
-                #--------------------------------------------------------------
-                # Using a gradient-based method here.
-                # TODO: Make it more pluggable.
-                def _objcall(dv_dict):
-                    """ Callback function"""
-                    fail = 0
-                    x = dv_dict['x']
-                    # Objective
-                    func_dict = {}
-                    confac_flag = False
-                    func_dict['obj'] = self.objective_callback(x)[0]
-                    return func_dict, fail
 
-                xC_iter = xloc_iter
-                opt_x, opt_f, succ_flag, msg = snopt_opt2(_objcall, xC_iter, xL_iter, xU_iter, title='LocalSearch',
-                                         options=options)
+        # LHS Sampling or SNOPT
+        else:
+            #TODO Future research on sampling here
+            num_samples = np.round(np.max([10, np.min([50, num_des/nodeHist.priority_flag])])) #TODO Future research
+            init_sam_node = lhs(num_des, samples=num_samples, criterion='center')
+            l_succ = 0
+            t_GA = 0.
 
-                xloc_iter_new = np.round(np.asarray(opt_x).flatten())
+            for ii in range(int(num_samples)):
+                xloc_iter_new = np.round(xL_iter + init_sam_node[ii]*(xU_iter - xL_iter))
                 floc_iter_new = self.objective_callback(xloc_iter_new)
+
+                # SNOPT
+                if local_search == 2:
+                    # TODO: did we lose a tol check here?
+                    # active_tol: #Perform at non-flat starting point
+                    if np.abs(floc_iter_new) > -np.inf:
+                        l_succ += 1
+                        #--------------------------------------------------------------
+                        #Step 2: Obtain a local solution
+                        #--------------------------------------------------------------
+                        # Using a gradient-based method here.
+                        # TODO: Make it more pluggable.
+                        def _objcall(dv_dict):
+                            """ Callback function"""
+                            fail = 0
+                            x = dv_dict['x']
+                            # Objective
+                            func_dict = {}
+                            confac_flag = False
+                            func_dict['obj'] = self.objective_callback(x)[0]
+                            return func_dict, fail
+
+                        xC_iter = xloc_iter_new
+                        opt_x, opt_f, succ_flag, msg = snopt_opt2(_objcall, xC_iter, xL_iter,
+                                                                  xU_iter, title='LocalSearch',
+                                                                  options=options)
+
+                        xloc_iter_new = np.round(np.asarray(opt_x).flatten())
+                        floc_iter_new = self.objective_callback(xloc_iter_new)
+
                 if floc_iter_new < floc_iter:
                     floc_iter = floc_iter_new
                     xloc_iter = xloc_iter_new
 
-        #--------------------------------------------------------------
-        # Step 3: Partition the current rectangle as per the new
-        # branching scheme.
-        #--------------------------------------------------------------
-        child_info = np.zeros([2, 3])
-        dis_flag = [' ', ' ']
-
-        # Choose
-        l_iter = (xU_iter - xL_iter).argmax()
-
-        if xloc_iter[l_iter]<xU_iter[l_iter]:
-            delta = 0.5 #0<delta<1
+        # Do some prechecks before commencing for partitioning.
+        ubdloc_best = nodeHist.ubdloc_best
+        if nodeHist.ubdloc_best > floc_iter + 1.0e-6:
+            ubd_track = np.concatenate((nodeHist.ubd_track, np.array([0])), axis=0)
+            ubdloc_best = floc_iter
         else:
-            delta = -0.5 #-1<delta<0
+            ubd_track = np.concatenate((nodeHist.ubd_track, np.array([1])), axis=0)
 
-        for ii in range(2):
-            lb = xL_iter.copy()
-            ub = xU_iter.copy()
-            if ii == 0:
-                ub[l_iter] = np.floor(xloc_iter[l_iter]+delta)
-            elif ii == 1:
-                lb[l_iter] = np.ceil(xloc_iter[l_iter]+delta)
+        # diff_LBD = abs(LBD_prev - LBD_NegConEI)
+        if len(ubd_track) >= trace_iter_max or \
+           (len(ubd_track) >= trace_iter and np.sum(ubd_track[-trace_iter:]) == 0):
+            # TODO : Did we lose ths? -> #and UBD<=-1.0e-3:
+            child_info = np.array([[par_node, np.inf, floc_iter], [par_node, np.inf, floc_iter]])
 
-            if np.linalg.norm(ub - lb) > active_tol: #Not a point
-                #--------------------------------------------------------------
-                # Step 4: Obtain an LBD of f in the newly created node
-                #--------------------------------------------------------------
-                S4_fail = False
-                x_comL, x_comU, Ain_hat, bin_hat = gen_coeff_bound(lb, ub, obj_surrogate)
-                sU, eflag_sU = self.maximize_S(x_comL, x_comU, Ain_hat, bin_hat,
-                                               obj_surrogate)
+            #Fathomed due to no change in UBD_loc for 'trace_iter' generations
+            dis_flag = ['Y', 'Y']
 
-                if eflag_sU:
-                    yL, eflag_yL = self.minimize_y(x_comL, x_comU, Ain_hat, bin_hat,
+        else:
+            #--------------------------------------------------------------
+            # Step 3: Partition the current rectangle as per the new
+            # branching scheme.
+            #--------------------------------------------------------------
+            child_info = np.zeros([2, 3])
+            dis_flag = [' ', ' ']
+
+            # Choose
+            l_iter = (xU_iter - xL_iter).argmax()
+
+            if xloc_iter[l_iter] < xU_iter[l_iter]:
+                delta = 0.5 #0<delta<1
+            else:
+                delta = -0.5 #-1<delta<0
+
+            for ii in range(2):
+                lb = xL_iter.copy()
+                ub = xU_iter.copy()
+                if ii == 0:
+                    ub[l_iter] = np.floor(xloc_iter[l_iter]+delta)
+                elif ii == 1:
+                    lb[l_iter] = np.ceil(xloc_iter[l_iter]+delta)
+
+                if np.linalg.norm(ub - lb) > active_tol: #Not a point
+                    #--------------------------------------------------------------
+                    # Step 4: Obtain an LBD of f in the newly created node
+                    #--------------------------------------------------------------
+                    S4_fail = False
+                    x_comL, x_comU, Ain_hat, bin_hat = gen_coeff_bound(lb, ub, obj_surrogate)
+                    sU, eflag_sU = self.maximize_S(x_comL, x_comU, Ain_hat, bin_hat,
                                                    obj_surrogate)
 
-                    if eflag_yL:
-                        NegEI = calc_conEI_norm([], obj_surrogate, SSqr=sU, y_hat=yL)
+                    if eflag_sU:
+                        yL, eflag_yL = self.minimize_y(x_comL, x_comU, Ain_hat, bin_hat,
+                                                       obj_surrogate)
+
+                        if eflag_yL:
+                            NegEI = calc_conEI_norm([], obj_surrogate, SSqr=sU, y_hat=yL)
+                        else:
+                            S4_fail = True
                     else:
                         S4_fail = True
-                else:
-                    S4_fail = True
 
-                # Convex approximation failed!
-                if S4_fail:
-                    if efloc_iter:
-                        LBD_NegConEI = LBD_prev
+                    # Convex approximation failed!
+                    if S4_fail:
+                        if efloc_iter:
+                            LBD_NegConEI = LBD_prev
+                        else:
+                            LBD_NegConEI = np.inf
+                        dis_flag[ii] = 'F'
                     else:
-                        LBD_NegConEI = np.inf
-                    dis_flag[ii] = 'F'
-                else:
-                    LBD_NegConEI = max(NegEI, LBD_prev)
+                        LBD_NegConEI = max(NegEI, LBD_prev)
 
-                #--------------------------------------------------------------
-                # Step 5: Store any new node inside the active set that has LBD
-                # lower than the UBD.
-                #--------------------------------------------------------------
-                ubdloc_best = nodeHist.ubdloc_best
-                if nodeHist.ubdloc_best > floc_iter + 1.0e-6:
-                    ubd_track = np.concatenate((nodeHist.ubd_track,np.array([1])),axis=0)
-                    ubdloc_best = floc_iter
-                else:
-                    ubd_track = np.concatenate((nodeHist.ubd_track,np.array([0])),axis=0)
-                diff_LBD = abs(LBD_prev - LBD_NegConEI)
-                if len(ubd_track) >= trace_iter and np.sum(ubd_track[-trace_iter:])==0 and UBD<=-1.0e-3:
-                    LBD_NegConEI = np.inf
-                priority_flag = 0
-                if diff_LBD<=0.5:
-                    priority_flag = 1 #Heavily explore this node
-                nodeHist_new = nodeHistclass()
-                nodeHist_new.ubd_track = ubd_track
-                nodeHist_new.ubdloc_best = ubdloc_best
-                nodeHist_new.priority_flag = priority_flag
+                    #--------------------------------------------------------------
+                    # Step 5: Store any new node inside the active set that has LBD
+                    # lower than the UBD.
+                    #--------------------------------------------------------------
 
-                if LBD_NegConEI < UBD - 1.0e-6:
-                    node_num += 1
-                    new_node = [node_num, lb, ub, LBD_NegConEI, floc_iter, nodeHist_new]
-                    new_nodes.append(new_node)
-                    child_info[ii] = np.array([node_num, LBD_NegConEI, floc_iter])
+                    priority_flag = 0
+                    if LBD_NegConEI < np.inf and LBD_prev < np.inf:
+                        if np.abs((LBD_prev - LBD_NegConEI)/LBD_prev) < 0.005:
+                            priority_flag = 1
+                    nodeHist_new = nodeHistclass()
+                    nodeHist_new.ubd_track = ubd_track
+                    nodeHist_new.ubdloc_best = ubdloc_best
+                    nodeHist_new.priority_flag = priority_flag
+
+                    if LBD_NegConEI < UBD - 1.0e-6:
+                        node_num += 1
+                        new_node = [node_num, lb, ub, LBD_NegConEI, floc_iter, nodeHist_new]
+                        new_nodes.append(new_node)
+                        child_info[ii] = np.array([node_num, LBD_NegConEI, floc_iter])
+                    else:
+                        child_info[ii] = np.array([par_node, LBD_NegConEI, floc_iter])
+                        dis_flag[ii] = 'X' #Flag for child created but not added to active set (fathomed)
                 else:
-                    child_info[ii] = np.array([par_node, LBD_NegConEI, floc_iter])
-                    dis_flag[ii] = 'X' #Flag for child created but not added to active set (fathomed)
-            else:
-                if ii == 1:
-                    xloc_iter = ub
-                    floc_iter = self.objective_callback(xloc_iter)
-                child_info[ii] = np.array([par_node, np.inf, floc_iter])
-                dis_flag[ii] = 'x' #Flag for No child created
+                    if ii == 1:
+                        xloc_iter = ub
+                        floc_iter = self.objective_callback(xloc_iter)
+                    child_info[ii] = np.array([par_node, np.inf, floc_iter])
+                    dis_flag[ii] = 'x' #Flag for No child created
 
         #Update the active set whenever better solution found
         if floc_iter < UBD:
@@ -652,16 +672,16 @@ class Branch_and_Bound(Driver):
         if disp:
             if (self.iter_count-1) % 25 == 0:
                 # Display output in a tabular format
-                print("="*85)
+                print("="*95)
                 print("%19s%12s%14s%21s" % ("Global", "Parent", "Child1", "Child2"))
-                template = "%s%8s%10s%8s%9s%11s%10s%11s%11s"
+                template = "%s%8s%10s%8s%9s%11s%10s%11s%11s%11s"
                 print(template % ("Iter", "LBD", "UBD", "Node", "Node1", "LBD1",
-                                  "Node2", "LBD2", "Flocal"))
-                print("="*85)
-            template = "%3d%10.2f%10.2f%6d%8d%1s%13.2f%8d%1s%13.2f%9.2f"
+                                  "Node2", "LBD2", "Flocal", "GA time"))
+                print("="*95)
+            template = "%3d%10.2f%10.2f%6d%8d%1s%13.2f%8d%1s%13.2f%9.2f%9.2f"
             print(template % (self.iter_count, LBD, UBD, par_node, child_info[0, 0],
                               dis_flag[0], child_info[0, 1], child_info[1, 0],
-                              dis_flag[1], child_info[1, 1], child_info[1, 2]))
+                              dis_flag[1], child_info[1, 1], child_info[1, 2], t_GA))
 
         return UBD, fopt, xopt, new_nodes
 
@@ -685,20 +705,20 @@ class Branch_and_Bound(Driver):
 
         P = 0.0
         # if self.options['concave_EI']: #Locally makes ei concave to get rid of flat objective space
-        if con_EI:
-            con_fac = self.con_fac
-            for ii in range(k):
-                P += con_fac[ii]*(lb[ii] - xval[ii])*(ub[ii] - xval[ii])
+        #if con_EI:
+            #con_fac = self.con_fac
+            #for ii in range(k):
+                #P += con_fac[ii]*(lb[ii] - xval[ii])*(ub[ii] - xval[ii])
 
         f = NegEI + P
 
         # START OF RADIAL PENALIZATION ADDENDUM
-        pfactor = self.options['penalty_factor']
-        width = self.options['penalty_width']
-        if pfactor != 0:
-            for xbad in self.bad_samples:
-                xbad_norm = (xbad - obj_surrogate.X_mean.flatten())/obj_surrogate.X_std.flatten()
-                f += pfactor * np.sum(np.exp(-1./width**2 * (xbad_norm - xval)**2))
+        #pfactor = self.options['penalty_factor']
+        #width = self.options['penalty_width']
+        #if pfactor != 0:
+            #for xbad in self.bad_samples:
+                #xbad_norm = (xbad - obj_surrogate.X_mean.flatten())/obj_surrogate.X_std.flatten()
+                #f += pfactor * np.sum(np.exp(-1./width**2 * (xbad_norm - xval)**2))
         # END OF RADIAL PENALIZATION ADDENDUM
 
         #print(xI, f)
@@ -736,7 +756,7 @@ class Branch_and_Bound(Driver):
         for ii in range(n):
             dr_drhat[ii, ii] = rU[ii, 0] - rL[ii, 0]
 
-        T2_num = np.dot(np.dot(R_inv, one),np.dot(R_inv, one).T)
+        T2_num = np.dot(np.dot(R_inv, one), np.dot(R_inv, one).T)
         T2_den = np.dot(one.T, np.dot(R_inv, one))
         d2S_dr2 = 2.0*SigmaSqr*(R_inv - (T2_num/T2_den))
         H_hat = np.dot(np.dot(dr_drhat, d2S_dr2), dr_drhat.T)
@@ -1200,8 +1220,8 @@ def calc_conEI_norm(xval, obj_surrogate, SSqr=None, y_hat=None):
     """This function evaluates the expected improvement in the normalized
     design space.
     """
-    # y_min = (obj_surrogate.y_best - obj_surrogate.Y_mean)/obj_surrogate.Y_std
-    y_min = obj_surrogate.y_best #Ensure y_min is the minimum of the y used to train the surrogates (i.e centered/scaled/normalized y)
+    # Ensure y_min is the minimum of the y used to train the surrogates (i.e centered/scaled/normalized y)
+    y_min = obj_surrogate.y_best
 
     if SSqr is None:
         X = obj_surrogate.X
@@ -1219,17 +1239,24 @@ def calc_conEI_norm(xval, obj_surrogate, SSqr=None, y_hat=None):
 
         y_hat = mu + np.dot(r.T, c_r)
         term0 = np.dot(R_inv, r)
-        SSqr = SigmaSqr*(1.0 - r.T.dot(term0) + \
-        ((1.0 - one.T.dot(term0))**2)/(one.T.dot(np.dot(R_inv, one))))
 
-    if abs(SSqr) <= 1.0e-6:
-        NegEI = np.array([0.0])
+        # Note: This dot product with one stuff seems to be faster than np.sum for these small
+        # sized matrices.
+        SSqr = SigmaSqr*(1.0 - r.T.dot(term0) + \
+                         ((1.0 - one.T.dot(term0))**2)/(one.T.dot(np.dot(R_inv, one))))
+
+    if SSqr <= 1.0e-30:
+        if abs(SSqr) <= 1.0e-30:
+            NegEI = np.array([-0.0])
+        else:
+            NegEI = np.array([-0.01])
     else:
         dy = y_min - y_hat
         SSqr = abs(SSqr)
-        ei1 = dy*(0.5+0.5*erf((1/np.sqrt(2))*(dy/np.sqrt(SSqr))))
+        ei1 = dy*0.5*(1.0 + erf((1/np.sqrt(2))*(dy/np.sqrt(SSqr))))
         ei2 = np.sqrt(SSqr)*(1.0/np.sqrt(2.0*np.pi))*np.exp(-0.5*(dy**2/SSqr))
         NegEI = -(ei1 + ei2)
+
     return NegEI
 
 
@@ -1289,7 +1316,7 @@ class nodeHistclass():
 def concave_factor(xI_lb,xI_ub,surrogate):
     xL = (xI_lb - surrogate.X_mean.flatten())/surrogate.X_std.flatten()
     xU = (xI_ub - surrogate.X_mean.flatten())/surrogate.X_std.flatten()
-    per_htm = 0.0
+    per_htm = 5.0
     con_fac = np.zeros((len(xL),))
     for k in range(len(xL)):
         if np.abs(xL[k] - xU[k]) > 1.0e-6:

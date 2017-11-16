@@ -82,6 +82,8 @@ class AMIEGO_driver(Driver):
         opt.declare('max_infill_points', 10, lower=1.0,
                     desc='Ratio of maximum number of additional points to number of initial '
                     'points.')
+        opt.declare('r_penalty', 1.0,
+                    desc='Constraint penalty applied to objective.')
 
         # The default continuous optimizer. User can slot a different one
         self.cont_opt = ScipyOptimizer()
@@ -221,6 +223,7 @@ class AMIEGO_driver(Driver):
         ei_tol_rel = self.options['ei_tol_rel']
         ei_tol_abs = self.options['ei_tol_abs']
         disp = self.options['disp']
+        r_pen = self.options['r_penalty']
         cont_opt = self.cont_opt
         minlp = self.minlp
         xI_lb = self.xI_lb
@@ -396,8 +399,13 @@ class AMIEGO_driver(Driver):
             #------------------------------------------------------------------
             n = len(x_i)
             P = np.zeros((n,1))
+
+            #TODO: Scale back the objective to the original Value
+            # As Kriging objective is normalized separately
+            scale_fac_conopt = np.array([1.0e3])
+            obj_surr = obj[:]*scale_fac_conopt
+
             num_vio = np.zeros((n, 1), dtype=np.int)
-            r_pen = 5.0 #TODO Future research
             for name, val in iteritems(cons):
                 val = np.array(val)
 
@@ -427,14 +435,14 @@ class AMIEGO_driver(Driver):
 
             for ii in range(n):
                 if num_vio[ii] > 0:
-                    obj[ii] = obj[ii]/(1.0 + r_pen*P[ii]/num_vio[ii])
+                    obj_surr[ii] = obj_surr[ii]/(1.0 + r_pen*P[ii]/num_vio[ii])
 
             obj_surrogate = self.surrogate()
             obj_surrogate.comm = problem.model.comm
             obj_surrogate.use_snopt = True
-            obj_surrogate.train(x_i, obj, KPLS_status=True)
+            obj_surrogate.train(x_i, obj_surr, KPLS_status=True)
 
-            obj_surrogate.y = obj
+            obj_surrogate.y = obj_surr
             obj_surrogate.lb_org = xI_lb
             obj_surrogate.ub_org = xI_ub
             obj_surrogate.lb = np.zeros((n_i))
