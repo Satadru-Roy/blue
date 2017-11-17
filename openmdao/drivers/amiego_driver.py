@@ -414,6 +414,7 @@ class AMIEGO_driver(Driver):
                     obj_surr[ii] = obj_surr[ii]/(1.0 + r_pen*P[ii]/num_vio[ii])
 
             obj_surrogate = self.surrogate()
+            obj_surrogate.use_snopt = True
             obj_surrogate.train(x_i, obj_surr, KPLS_status=True)
 
             obj_surrogate.y = obj_surr
