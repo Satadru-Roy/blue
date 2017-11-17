@@ -494,7 +494,7 @@ class Branch_and_Bound(Driver):
 
             ga = Genetic_Algorithm(calc_conEI_norm)
 
-            bits = np.zeros((num_des,1),dtype = int)
+            bits = np.zeros((num_des, 1), dtype = int)
             bits = np.ceil(np.log2(xU_iter - xL_iter + 1))
             bits[bits<=0] =1
             vub_vir = (2**bits - 1) + xL_iter
@@ -641,6 +641,7 @@ class Branch_and_Bound(Driver):
                     if LBD_NegConEI < np.inf and LBD_prev < np.inf:
                         if np.abs((LBD_prev - LBD_NegConEI)/LBD_prev) < 0.005:
                             priority_flag = 1
+
                     nodeHist_new = nodeHistclass()
                     nodeHist_new.ubd_track = ubd_track
                     nodeHist_new.ubdloc_best = ubdloc_best
@@ -1059,7 +1060,8 @@ def update_active_set(active_set, ubd):
 
     Returns
     -------
-    new active_set
+    list of list of floats
+        New active_set
     """
     return [a for a in active_set if a[3] < ubd]
 
@@ -1096,42 +1098,41 @@ def interval_analysis(lb_x, ub_x, surrogate):
     r_i = exp(-sum(theta_h*(x_h - x_h_i)^2))
 
     """
-
-    X = surrogate.X
-    thetas = surrogate.thetas
     p = surrogate.p
-    n, k = X.shape
-
-    t1L = np.zeros([n, k]); t1U = np.zeros([n, k])
-    t2L = np.zeros([n, k]); t2U = np.zeros([n, k])
-    t3L = np.zeros([n, k]); t3U = np.zeros([n, k])
-    t4L = np.zeros([n, 1]); t4U = np.zeros([n, 1])
-    lb_r = np.zeros([n, 1]); ub_r = np.ones([n, 1])
 
     if p % 2 == 0:
+        X = surrogate.X
+        thetas = surrogate.thetas
+        n, k = X.shape
+
+        t3L = np.empty([n, k])
+        t3U = np.empty([n, k])
+
+        t1L = lb_x - X
+        t1U = ub_x - X
+
+        fac1 = t1L*t1L
+        fac2 = t1L*t1U
+        fac3 = t1U*t1U
+
         for i in range(n):
             for h in range(k):
-                t1L[i,h] = lb_x[h] - X[i, h]
-                t1U[i,h] = ub_x[h] - X[i, h]
 
-                t2L[i,h] = np.max(np.array([0,np.min(np.array([t1L[i, h]*t1L[i, h],
-                                                                t1L[i, h]*t1U[i, h],
-                                                                t1U[i, h]*t1U[i, h]]))]))
-                t2U[i,h] = np.max(np.array([0,np.max(np.array([t1L[i, h]*t1L[i, h],
-                                                                t1L[i, h]*t1U[i, h],
-                                                                t1U[i, h]*t1U[i, h]]))]))
+                fact = np.array([fac1[i, h], fac2[i, h], fac3[i, h]])
+                t2L = np.max(np.array([0, np.min(fact)]))
+                t2U = np.max(np.array([0, np.max(fact)]))
 
-                t3L[i,h] = np.min(np.array([-thetas[h]*t2L[i, h], -thetas[h]*t2U[i, h]]))
-                t3U[i,h] = np.max(np.array([-thetas[h]*t2L[i, h], -thetas[h]*t2U[i, h]]))
+                fact = np.array([-thetas[h]*t2L, -thetas[h]*t2U])
+                t3L[i, h] = np.min(fact)
+                t3U[i, h] = np.max(fact)
 
-            t4L[i] = np.sum(t3L[i, :])
-            t4U[i] = np.sum(t3U[i, :])
-
-        lb_r = np.exp(t4L)
-        ub_r = np.exp(t4U)
+        lb_r = np.exp(np.sum(t3L, axis=1))
+        ub_r = np.exp(np.sum(t3U, axis=1))
     else:
         print("\nWarning! Value of p should be 2. Cannot perform interval analysis")
         print("\nReturing global bound of the r variable")
+        lb_r = np.zeros([n, k])
+        ub_r = np.zeros([n, k])
 
     return lb_r, ub_r
 
@@ -1145,30 +1146,28 @@ def lin_underestimator(lb, ub, surrogate):
     lb_x = lb[:k]; ub_x = ub[:k]
     lb_r = lb[k:]; ub_r = ub[k:]
 
-    a1 = np.zeros([n, n]); a3 = np.zeros([n, n])
     a1_hat = np.zeros([n, n]); a3_hat = np.zeros([n, n])
     a2 = np.zeros([n, k]); a4 = np.zeros([n, k])
     b2 = np.zeros([n, k]); b4 = np.zeros([n, k])
-    b1 = np.zeros([n, 1]); b3 = np.zeros([n, 1])
     b1_hat = np.zeros([n, 1]); b3_hat = np.zeros([n, 1])
 
     for i in range(n):
-        #T1: Linearize under-estimator of ln[r_i] = a1[i,i]*r[i] + b1[i]
+        #T1: Linearize under-estimator of ln[r_i] = a1*r[i] + b1
         if ub_r[i] <= lb_r[i]:
-            a1[i,i] = 0.0
+            a1 = 0.0
         else:
-            a1[i,i] = ((np.log(ub_r[i]) - np.log(lb_r[i]))/(ub_r[i] - lb_r[i]))
+            a1 = ((np.log(ub_r[i]) - np.log(lb_r[i]))/(ub_r[i] - lb_r[i]))
 
-        b1[i] = np.log(ub_r[i]) - a1[i,i]*ub_r[i]
-        a1_hat[i,i] = a1[i,i]*(ub_r[i]-lb_r[i])
-        b1_hat[i] = a1[i,i]*lb_r[i] + b1[i]
+        b1 = np.log(ub_r[i]) - a1*ub_r[i]
+        a1_hat[i, i] = a1*(ub_r[i] - lb_r[i])
+        b1_hat[i] = a1*lb_r[i] + b1
 
-        #T3: Linearize under-estimator of -ln[r_i] = a3[i,i]*r[i] + b3[i]
+        #T3: Linearize under-estimator of -ln[r_i] = a3*r[i] + b3
         r_m_i = (lb_r[i] + ub_r[i])/2.0
-        a3[i,i] = -1.0/r_m_i
-        b3[i] = -np.log(r_m_i) - a3[i,i]*r_m_i
-        a3_hat[i,i] = a3[i,i]*(ub_r[i] - lb_r[i])
-        b3_hat[i] = a3[i,i]*lb_r[i] + b3[i]
+        a3 = -1.0/r_m_i
+        b3 = -np.log(r_m_i) - a3*r_m_i
+        a3_hat[i,i] = a3*(ub_r[i] - lb_r[i])
+        b3_hat[i] = a3*lb_r[i] + b3
 
         for h in range(k):
             #T2: Linearize under-estimator of thetas_h*(x_h - X_h_i)^2 = a4[i,h]*x_h[h] + b4[i,h]
@@ -1178,21 +1177,21 @@ def lin_underestimator(lb, ub, surrogate):
             b2[i,h] = -a2[i,h]*x_m_h + yy
 
             #T4: Linearize under-estimator of -theta_h*(x_h - X_h_i)^2 = a4[i,h]*x_h[h] + b4[i,h]
-            yy2 = -thetas[h]*(ub_x[h] - X[i,h])**p
-            yy1 = -thetas[h]*(lb_x[h] - X[i,h])**p
+            yy2 = -thetas[h]*(ub_x[h] - X[i, h])**p
+            yy1 = -thetas[h]*(lb_x[h] - X[i, h])**p
 
             if ub_x[h] <= lb_x[h]:
                 a4[i,h] = 0.0
             else:
                 a4[i,h] = (yy2 - yy1)/(ub_x[h] - lb_x[h])
 
-            b4[i,h] = -a4[i,h]*lb_x[h] + yy1
+            b4[i, h] = -a4[i, h]*lb_x[h] + yy1
 
     Ain1 = np.concatenate((a2, a4), axis=0)
     Ain2 = np.concatenate((a1_hat, a3_hat), axis=0)
     Ain_hat = np.concatenate((Ain1, Ain2), axis=1)
-    bin_hat = np.concatenate((-(b1_hat + np.sum(b2, axis=1).reshape(n,1)),
-                              -(b3_hat + np.sum(b4, axis=1).reshape(n,1))), axis=0)
+    bin_hat = np.concatenate((-(b1_hat + np.sum(b2, axis=1).reshape(n, 1)),
+                              -(b3_hat + np.sum(b4, axis=1).reshape(n, 1))), axis=0)
 
     return Ain_hat, bin_hat
 
