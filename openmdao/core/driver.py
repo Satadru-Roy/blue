@@ -315,10 +315,10 @@ class Driver(object):
         }
 
         self._rec_mgr.startup(self)
-        if self._rec_mgr._recorders:
-            from openmdao.devtools.problem_viewer.problem_viewer import _get_viewer_data
-            self._model_viewer_data = _get_viewer_data(problem)
         if self.recording_options['record_metadata']:
+            if self._rec_mgr._recorders:
+                from openmdao.devtools.problem_viewer.problem_viewer import _get_viewer_data
+                self._model_viewer_data = _get_viewer_data(problem)
             self._rec_mgr.record_metadata(self)
 
     def _get_voi_val(self, name, meta, remote_vois):
