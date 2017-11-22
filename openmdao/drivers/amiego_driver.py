@@ -25,6 +25,7 @@ from openmdao.core.driver import Driver
 from openmdao.drivers.amiego_util.branch_and_bound import Branch_and_Bound
 from openmdao.drivers.amiego_util.kriging import KrigingSurrogate
 from openmdao.drivers.scipy_optimizer import ScipyOptimizer
+from openmdao.recorders.recording_iteration_stack import Recording
 
 
 class AMIEGO_driver(Driver):
@@ -307,6 +308,7 @@ class AMIEGO_driver(Driver):
         tot_newpt_added = 0
         tot_pt_prev = 0
         ec2 = 0
+        i_con_opt = 0
 
         # AMIEGO main loop
         while not terminate:
@@ -344,8 +346,13 @@ class AMIEGO_driver(Driver):
                 cont_opt.trip = x_i[i_run]
 
                 # Optimize continuous variables
-                self.pre_cont_opt_hook()
-                fail = cont_opt.run()
+                with Recording('AMIEGO_cont_opt', i_con_opt, self) as rec:
+                    self.pre_cont_opt_hook()
+                    fail = cont_opt.run()
+                    rec.abs = 0.0
+                    rec.rel = 0.0
+
+                i_con_opt += 1
                 eflag_conopt = not fail
                 if disp:
                     print("Exit Flag:", eflag_conopt)
