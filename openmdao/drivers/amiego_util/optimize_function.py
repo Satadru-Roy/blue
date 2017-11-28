@@ -81,7 +81,7 @@ def snopt_opt(objfun, desvar, lb, ub, ncon=None, title=None, options=None,
 
     if OPTIMIZER == 'SNOPT':
         opt.setOption('Major iterations limit', 100)
-        opt.setOption('Verify level', -1)
+        #opt.setOption('Verify level', -1)
         opt.setOption('iSumm', 0)
         opt.setOption('iPrint', 0)
     elif OPTIMIZER == 'SLSQP':
@@ -96,5 +96,8 @@ def snopt_opt(objfun, desvar, lb, ub, ncon=None, title=None, options=None,
     f = sol.objectives['obj'].value
     success_flag = sol.optInform['value'] < 2
     msg = sol.optInform['text']
+
+    if 'krig' not in title:
+        pass
 
     return x, f, success_flag, msg

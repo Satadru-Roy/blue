@@ -135,17 +135,17 @@ class TestAMIEGOdriver(unittest.TestCase):
                    np.array([ 3.,  4.,  2.]),
                    np.array([ 1.,  1.,  4.])]
 
-        obj_samples = [np.array([ 20.33476318]),
-                       np.array([ 15.70506904]),
-                       np.array([ 11.400119]),
-                       np.array([ 13.86862844]),
-                       np.array([ 7.8228])]
+        obj_samples = [np.array([ 20.42278739]),
+                       np.array([ 7.87886979]),
+                       np.array([ 11.40011902]),
+                       np.array([ 13.86862925]),
+                       np.array([ 11.65356799])]
 
-        con_samples = [np.array([ 1.21567329,  0.41459045,  0.11071787]),
-                       np.array([ 1.00000067,  0.37435478,  0.35066873]),
-                       np.array([ 0.49384779,  1.        ,  0.09501302]),
-                       np.array([ 1.00000027,  1.00000001,  0.91702834]),
-                       np.array([  1.299275,   1.052509,   0.694345])]
+        con_samples = [np.array([ 1.        ,  1.00000028,  0.66329027]),
+                       np.array([ 1.        ,  1.        ,  0.73587506]),
+                       np.array([ 0.49384804,  1.        ,  0.09501274]),
+                       np.array([ 1.00000004,  1.        ,  0.91702808]),
+                       np.array([ 0.85256063,  1.00000001,  0.4147135])]
 
         prob.driver.sampling = {'mat' : samples}
         prob.driver.obj_sampling = {'mass' : obj_samples}

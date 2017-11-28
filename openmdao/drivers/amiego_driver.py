@@ -92,7 +92,7 @@ class AMIEGO_driver(Driver):
 
         self.c_dvs = []
         self.i_size = 0
-        self.i_idx = {}
+        self.i_idx = OrderedDict()
         self.n_train = 0
 
         # Initial Sampling of integer design points

@@ -112,9 +112,6 @@ class Branch_and_Bound(Driver):
         self.xopt = None
         self.fopt = None
 
-        # Switch between pyoptsparse and scipy/slsqp
-        self.pyopt = True
-
         # Declare stuff we need to pass to objective callback functions
         self.current_surr = None
 
@@ -471,9 +468,9 @@ class Branch_and_Bound(Driver):
             l_iter = (xU_iter - xL_iter).argmax()
 
             if xloc_iter[l_iter] < xU_iter[l_iter]:
-                delta = 0.5 #0<delta<1
+                delta = 0.5  #0<delta<1
             else:
-                delta = -0.5 #-1<delta<0
+                delta = -0.5  #-1<delta<0
 
             for ii in range(2):
                 lb = xL_iter.copy()
@@ -589,8 +586,11 @@ class Branch_and_Bound(Driver):
         return f
 
     def maximize_S(self, x_comL, x_comU, Ain_hat, bin_hat, surrogate):
-        """This method finds an upper bound to the SigmaSqr Error, and scales
-        up 'r' to provide a smooth design space for gradient-based approach.
+        """
+        Maximize the SigmaSqr Error.
+
+        This method finds an upper bound to the SigmaSqr Error, and scales up 'r' to provide a
+        smooth design space for gradient-based approach.
         """
 
         if OPTIMIZER == 'SNOPT':
@@ -634,73 +634,53 @@ class Branch_and_Bound(Driver):
             sum_col = 0.0
             for jj in range(n):
                 if ii != jj:
-                    sum_rw += np.abs(H_hat[ii,jj])
-                    sum_col += np.abs(H_hat[jj,ii])
+                    sum_rw += np.abs(H_hat[ii, jj])
+                    sum_col += np.abs(H_hat[jj, ii])
 
-                eig_lb[ii] = dia_ele - np.min(np.array([sum_rw, sum_col]))
+            eig_lb[ii] = dia_ele - np.min(np.array([sum_rw, sum_col]))
 
         eig_min = np.min(eig_lb)
         alpha = np.max(np.array([0.0, -0.5*eig_min]))
 
-        # Just storing it here to pull it out in the callback?
-        surrogate._alpha = alpha
-
         # Maximize S
         x0 = 0.5*(xhat_comL + xhat_comU)
-        #bnds = [(xhat_comL[ii], xhat_comU[ii]) for ii in range(len(xhat_comL))]
 
-        if self.pyopt:
+        # Just storing stuff here to pull it out in the callback.
+        surrogate._alpha = alpha
+        self.x_comL = x_comL
+        self.x_comU = x_comU
+        self.xhat_comL = xhat_comL
+        self.xhat_comU = xhat_comU
+        self.Ain_hat = Ain_hat
+        self.bin_hat = bin_hat
+        self.current_surr = surrogate
 
-            self.x_comL = x_comL
-            self.x_comU = x_comU
-            self.xhat_comL = xhat_comL
-            self.xhat_comU = xhat_comU
-            self.Ain_hat = Ain_hat
-            self.bin_hat = bin_hat
-            self.current_surr = surrogate
+        opt_x, opt_f, succ_flag, msg = snopt_opt(self.calc_SSqr_convex, x0, xhat_comL,
+                                                 xhat_comU, ncon=len(bin_hat),
+                                                 title='Maximize_S',
+                                                 options=options,
+                                                 jac=Ain_hat,
+                                                 sens=self.calc_SSqr_convex_grad)
 
-            opt_x, opt_f, succ_flag, msg = snopt_opt(self.calc_SSqr_convex, x0, xhat_comL,
-                                                     xhat_comU, ncon=len(bin_hat),
-                                                     title='Maximize_S',
-                                                     options=options,
-                                                     jac=Ain_hat,
-                                                     ) #sens=self.calc_SSqr_convex_grad)
-
-            Neg_sU = opt_f
-            # if not succ_flag:
-            #     eflag_sU = False
-            # else:
-            #     eflag_sU = True
-            eflag_sU = True
-            tol = self.options['con_tol']
-            for ii in range(2*n):
-                if np.dot(Ain_hat[ii, :], opt_x) > (bin_hat[ii ,0] + tol):
-                    eflag_sU = False
-                    break
-
-        else:
-            optResult = minimize(self.calc_SSqr_convex_old, x0,
-                                 args=(x_comL, x_comU, xhat_comL, xhat_comU, surrogate),
-                                 method='SLSQP', constraints=[], bounds=bnds,
-                                 options={'ftol' : self.options['ftol'],
-                                          'maxiter' : 100})
-
-            Neg_sU = optResult.fun
-            if not optResult.success:
+        Neg_sU = opt_f
+        # if not succ_flag:
+        #     eflag_sU = False
+        # else:
+        #     eflag_sU = True
+        eflag_sU = True
+        tol = self.options['con_tol']
+        for ii in range(2*n):
+            if np.dot(Ain_hat[ii, :], opt_x) > (bin_hat[ii ,0] + tol):
                 eflag_sU = False
-            else:
-                eflag_sU = True
-                tol = self.options['con_tol']
-                for ii in range(2*n):
-                    if np.dot(Ain_hat[ii, :], optResult.x) > (bin_hat[ii ,0] + tol):
-                        eflag_sU = False
-                        break
+                break
 
         sU = - Neg_sU
         return sU, eflag_sU
 
     def calc_SSqr_convex(self, dv_dict):
-        """ Callback function for minimization of mean squared error."""
+        """
+        Callback function for minimization of mean squared error.
+        """
         fail = 0
 
         x_com = dv_dict['x']
@@ -726,7 +706,7 @@ class Branch_and_Bound(Driver):
         term1 = -SigmaSqr*(1.0 - r.T.dot(term0) + \
         ((1.0 - one.T.dot(term0))**2/(one.T.dot(np.dot(R_inv, one)))))
 
-        term2 = alpha*(rhat-rhat_L).T.dot(rhat-rhat_U)
+        term2 = alpha*(rhat - rhat_L).T.dot(rhat - rhat_U)
         S2 = term1 + term2
 
         # Objectives
@@ -743,16 +723,13 @@ class Branch_and_Bound(Driver):
         return func_dict, fail
 
     def calc_SSqr_convex_grad(self, dv_dict, func_dict):
-        """ Callback function for gradient of mean squared error."""
+        """
+        Callback function for gradient of mean squared error.
+        """
         fail = 0
 
         x_com = dv_dict['x']
         surrogate = self.current_surr
-
-        x_comL = self.x_comL
-        x_comU = self.x_comU
-        xhat_comL = self.xhat_comL
-        xhat_comU = self.xhat_comU
 
         X = surrogate.X
         R_inv = surrogate.R_inv
@@ -764,28 +741,24 @@ class Branch_and_Bound(Driver):
 
         one = np.ones([n, 1])
 
-        rL = x_comL[k:]
-        rU = x_comU[k:]
+        rL = self.x_comL[k:]
+        rU = self.x_comU[k:]
         rhat = x_com[k:].reshape(n, 1)
 
         r = rL + rhat*(rU - rL)
-        rhat_L = xhat_comL[k:]
-        rhat_U = xhat_comU[k:]
+        rhat_L = self.xhat_comL[k:]
+        rhat_U = self.xhat_comU[k:]
 
-        dr_drhat = np.diag((rU-rL).flat)
+        dr_drhat = np.diag((rU - rL).flat)
 
-        term0 = np.dot(R_inv, r) #This should be nx1 vector
-        term1 = ((1.0 - one.T.dot(term0))/(one.T.dot(np.dot(R_inv, one))))*np.dot(R_inv, one) #This should be nx1 vector
-        term = 2.0*SigmaSqr*(term0 + term1) #This should be nx1 vector
+        term0 = np.dot(R_inv, r)
+        term1 = ((1.0 - one.T.dot(term0))/(one.T.dot(np.dot(R_inv, one))))*np.dot(R_inv, one)
+        term = 2.0*SigmaSqr*(term0 + term1)
 
-        #zdterm1a = (r.T.dot(R_inv) + r.T.dot(R_inv.T))
-        #zdterm1b = 2.0*((1.0 - one.T.dot(term0))*np.sum(R_inv, 0)/(one.T.dot(np.dot(R_inv, one))))
-        #zdterm1 = SigmaSqr*(zdterm1a.T + dr_drhat.dot(zdterm1b.T))
+        dterm1 = np.dot(dr_drhat, term)
+        dterm2 = alpha*(2.0*rhat - rhat_L - rhat_U)
 
-        dterm1 = np.dot(dr_drhat, term) #This should be nx1 vector
-        dterm2 = alpha*(2.0*rhat - rhat_L - rhat_U) #This should be nx1 vector
-
-        dobj_dr = (dterm1 + dterm2).T #This should be 1xn vector
+        dobj_dr = (dterm1 + dterm2).T
 
         # Objectives
         sens_dict = OrderedDict()
@@ -795,13 +768,12 @@ class Branch_and_Bound(Driver):
 
         # Constraints
         Ain_hat = self.Ain_hat
-        bin_hat = self.bin_hat
 
         sens_dict['con'] = OrderedDict()
         sens_dict['con']['x'] = Ain_hat
 
-        #print('obj deriv', sens_dict['obj']['x'] )
-        #print('con deriv', sens_dict['con']['x'])
+        print('obj deriv', sens_dict['obj']['x'] )
+        print('con deriv', sens_dict['con']['x'])
         return sens_dict, fail
 
     def minimize_y(self, x_comL, x_comU, Ain_hat, bin_hat, surrogate):
@@ -829,69 +801,31 @@ class Branch_and_Bound(Driver):
             x0 = 0.5*(xhat_comL + xhat_comU)
             #bnds = [(xhat_comL[ii], xhat_comU[ii]) for ii in range(len(xhat_comL))]
 
-        if self.pyopt:
+        self.x_comL = x_comL
+        self.x_comU = x_comU
+        self.Ain_hat = Ain_hat
+        self.bin_hat = bin_hat
+        self.current_surr = surrogate
 
-            self.x_comL = x_comL
-            self.x_comU = x_comU
-            self.Ain_hat = Ain_hat
-            self.bin_hat = bin_hat
-            self.current_surr = surrogate
+        opt_x, opt_f, succ_flag, msg = snopt_opt(self.calc_y_hat_convex, x0, xhat_comL,
+                                                 xhat_comU, ncon=len(bin_hat),
+                                                 title='minimize_y',
+                                                 options=options,
+                                                 jac=Ain_hat)
 
-            opt_x, opt_f, succ_flag, msg = snopt_opt(self.calc_y_hat_convex, x0, xhat_comL,
-                                                     xhat_comU, ncon=len(bin_hat),
-                                                     title='minimize_y',
-                                                     options=options,
-                                                     jac=Ain_hat)
-
-            yL = opt_f
-            # if not succ_flag:
-            #     eflag_yL = False
-            # else:
-            #     eflag_yL = True
-            eflag_yL = True
-            tol = self.options['con_tol']
-            for ii in range(2*n):
-                if np.dot(Ain_hat[ii, :], opt_x) > (bin_hat[ii, 0] + tol):
-                    eflag_yL = False
-                    break
-
-        else:
-            optResult = minimize(self.calc_y_hat_convex_old, x0,
-                                 args=(x_comL, x_comU, surrogate), method='SLSQP',
-                                 constraints=[], bounds=bnds,
-                                 options={'ftol' : self.options['ftol'],
-                                          'maxiter' : 100})
-
-            yL = optResult.fun
-            if not optResult.success:
+        yL = opt_f
+        # if not succ_flag:
+        #     eflag_yL = False
+        # else:
+        #     eflag_yL = True
+        eflag_yL = True
+        tol = self.options['con_tol']
+        for ii in range(2*n):
+            if np.dot(Ain_hat[ii, :], opt_x) > (bin_hat[ii, 0] + tol):
                 eflag_yL = False
-            else:
-                eflag_yL = True
-                tol = self.options['con_tol']
-                for ii in range(2*n):
-                    if np.dot(Ain_hat[ii, :], optResult.x) > (bin_hat[ii, 0] + tol):
-                        eflag_yL = False
-                        break
+                break
 
         return yL, eflag_yL
-
-    def calc_y_hat_convex_old(self, x_com, *param):
-        x_comL = param[0]
-        x_comU = param[1]
-        surrogate = param[2]
-
-        X = surrogate.X
-        c_r = surrogate.c_r
-        mu = surrogate.mu
-        n, k = X.shape
-
-        rL = x_comL[k:]
-        rU = x_comU[k:]
-        rhat = np.array([x_com[k:]]).reshape(n, 1)
-        r = rL + rhat*(rU - rL)
-
-        y_hat = mu + np.dot(r.T, c_r)
-        return y_hat[0, 0]
 
     def calc_y_hat_convex(self, dv_dict):
         fail = 0
@@ -925,6 +859,7 @@ class Branch_and_Bound(Driver):
         #print('x', dv_dict)
         #print('obj', func_dict['obj'])
         return func_dict, fail
+
 
 def update_active_set(active_set, ubd):
     """ Remove variables from the active set data structure if their current

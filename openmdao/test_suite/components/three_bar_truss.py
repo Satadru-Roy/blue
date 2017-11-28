@@ -211,8 +211,8 @@ class ThreeBarTrussVector(ExplicitComponent):
         mat = inputs['mat']
 
         length = np.array([np.sqrt(1.2**2 + 1.2**2),
-                          1.2,
-                          np.sqrt(1.2**2 + 1.2**2)])
+                           1.2,
+                           np.sqrt(1.2**2 + 1.2**2)])
 
         rho = np.zeros((3, ))
         try:

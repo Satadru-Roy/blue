@@ -386,7 +386,7 @@ class KrigingSurrogate(SurrogateModel):
 
     def KPLS_reg(self):
         def power_iter(X, y):
-            A = np.dot(np.dot(X.T, y),np.dot(y.T, X))
+            A = np.dot(np.dot(X.T, y), np.dot(y.T, X))
             qk = np.zeros([A.shape[0], 1])
             qk[0] = 1.0
             kk=0.
