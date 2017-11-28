@@ -189,6 +189,7 @@ class FakeComm(object):
         """
         pass
 
+
 if MPI:
     def mpirun_tests():
         """

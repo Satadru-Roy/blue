@@ -12,6 +12,8 @@ trace = os.environ.get('OPENMDAO_TRACE')
 
 def concurrent_eval_lb(func, cases, comm, broadcast=False):
     """
+    Evaluate function on multiple processors with load balancing.
+
     Runs a load balanced version of the given function, with the master
     rank (0) sending a new case to each worker rank as soon as it
     has finished its last case.
@@ -23,7 +25,7 @@ def concurrent_eval_lb(func, cases, comm, broadcast=False):
     cases : collection of function args
         Entries are assumed to be of the form (args, kwargs) where
         kwargs are allowed to be None and args should be a list or tuple.
-    com : MPI communicator or None
+    comm : MPI communicator or None
         The MPI communicator that is shared between the master and workers.
         If None, the function will be executed serially.
     broadcast : bool(False)
@@ -31,8 +33,8 @@ def concurrent_eval_lb(func, cases, comm, broadcast=False):
         that the return value of concurrent_eval_lb will be the full result
         list in every process.
 
-    Return
-    ------
+    Returns
+    -------
     object
         Return from function.
     """
@@ -53,7 +55,7 @@ def concurrent_eval_lb(func, cases, comm, broadcast=False):
         if broadcast:
             results = comm.bcast(results, root=0)
 
-    else: # serial execution
+    else:  # serial execution
         results = []
         for args, kwargs in cases:
             try:
@@ -61,7 +63,7 @@ def concurrent_eval_lb(func, cases, comm, broadcast=False):
                     retval = func(*args, **kwargs)
                 else:
                     retval = func(*args)
-            except:
+            except Exception:
                 err = traceback.format_exc()
                 retval = None
             else:
@@ -73,6 +75,8 @@ def concurrent_eval_lb(func, cases, comm, broadcast=False):
 
 def _concurrent_eval_lb_master(cases, comm):
     """
+    Coordinate worker processes.
+
     This runs only on rank 0.  It sends cases to all of the workers and
     collects their results.
 
@@ -81,7 +85,7 @@ def _concurrent_eval_lb_master(cases, comm):
     cases : collection of function args
         Entries are assumed to be of the form (args, kwargs) where
         kwargs are allowed to be None and args should be a list or tuple.
-    com : MPI communicator or None
+    comm : MPI communicator or None
         The MPI communicator that is shared between the master and workers.
         If None, the function will be executed serially.
 
@@ -152,7 +156,7 @@ def _concurrent_eval_lb_worker(func, comm):
         if trace:
             debug('Worker Case Received')
 
-        if args is None: # we're done
+        if args is None:  # we're done
             break
 
         try:
@@ -160,7 +164,7 @@ def _concurrent_eval_lb_worker(func, comm):
                 retval = func(*args, **kwargs)
             else:
                 retval = func(*args)
-        except:
+        except Exception:
             err = traceback.format_exc()
             retval = None
         else:
@@ -172,19 +176,19 @@ def _concurrent_eval_lb_worker(func, comm):
 
 def concurrent_eval(func, cases, comm, allgather=False):
     """
-    Runs the given function concurrently on all procs in the communicator.
+    Run the given function concurrently on all procs in the communicator.
 
     NOTE: This function should NOT be used if the concurrent function makes
     any internal collective MPI calls.
 
-    Args
-    ----
+    Parameters
+    ----------
     func : function
         The function to execute in workers.
     cases : iter of function args
         Entries are assumed to be of the form (args, kwargs) where
         kwargs are allowed to be None and args should be a list or tuple.
-    com : MPI communicator or None
+    comm : MPI communicator or None
         The MPI communicator that is shared between the master and workers.
         If None, the function will be executed serially.
     allgather : bool(False)
@@ -210,7 +214,7 @@ def concurrent_eval(func, cases, comm, allgather=False):
                 retval = func(*args, **kwargs)
             else:
                 retval = func(*args)
-        except:
+        except Exception:
             err = traceback.format_exc()
             retval = None
         else:

@@ -169,7 +169,7 @@ class AMIEGO_driver(Driver):
 
         j = 0
         for var, idx in iteritems(self.i_idx):
-            idx_tuple = (j, j+idx)
+            idx_tuple = (j, j + idx)
             j += idx
             self.i_idx[var] = idx_tuple
         self.i_size = j
@@ -224,13 +224,13 @@ class AMIEGO_driver(Driver):
 
         self.iter_count = 0
 
-        #----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
         # Step 1: Generate a set of initial integer points
         # TODO: Use Latin Hypercube Sampling to generate the initial points
         # User supplied (in future use LHS). Provide num_xI+2 starting points
-        #----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
 
-        max_pt_lim = self.options['max_infill_points']*n_i
+        max_pt_lim = self.options['max_infill_points'] * n_i
 
         # Since we need to add a new point every iteration, make these lists
         # for speed.
@@ -314,13 +314,13 @@ class AMIEGO_driver(Driver):
         while not terminate:
             self.iter_count += 1
 
-            #------------------------------------------------------------------
+            # ------------------------------------------------------------------
             # Step 2: Perform the optimization w.r.t continuous design
             # variables
-            #------------------------------------------------------------------
+            # ------------------------------------------------------------------
 
             if disp:
-                print("======================ContinuousOptimization-Start=====================================")
+                print(22 * "=" + "ContinuousOptimization-Start" + 37 * "=" )
                 t0 = time()
 
             # In initial iteration, we only optimize points if we don't have samples of the cons
@@ -380,19 +380,19 @@ class AMIEGO_driver(Driver):
 
             if disp:
                 print('Elapsed Time:', time() - t0)
-                print("======================ContinuousOptimization-End=======================================")
+                print(22 * "=" + "ContinuousOptimization-End" + 39 * "=" )
                 t0 = time()
 
-            #------------------------------------------------------------------
+            # ------------------------------------------------------------------
             # Step 3: Build the surrogate models
-            #------------------------------------------------------------------
+            # ------------------------------------------------------------------
             n = len(x_i)
             P = np.zeros((n, 1))
 
-            #TODO: Scale back the objective to the original Value
+            # TODO: Scale back the objective to the original Value
             # As Kriging objective is normalized separately
             scale_fac_conopt = np.array([1.0e3])
-            obj_surr = obj[:]*scale_fac_conopt
+            obj_surr = obj[:] * scale_fac_conopt
 
             num_vio = np.zeros((n, 1), dtype=np.int)
             for name, val in iteritems(cons):
@@ -418,23 +418,23 @@ class AMIEGO_driver(Driver):
 
             for ii in range(n):
                 if num_vio[ii] > 0:
-                    obj_surr[ii] = obj_surr[ii]/(1.0 + r_pen*P[ii]/num_vio[ii])
+                    obj_surr[ii] = obj_surr[ii] / (1.0 + r_pen * P[ii] / num_vio[ii])
 
             obj_surrogate = self.surrogate()
             obj_surrogate.use_snopt = True
-            obj_surrogate.train(x_i, obj_surr, KPLS_status=True)
+            obj_surrogate.train(x_i, obj_surr, KPLS=True)
 
             obj_surrogate.y = obj_surr
-            best_obj_norm = (best_obj - obj_surrogate.Y_mean)/obj_surrogate.Y_std
+            best_obj_norm = (best_obj - obj_surrogate.Y_mean) / obj_surrogate.Y_std
 
             if disp:
                 print("\nSurrogate building of the objective is complete...")
                 print('Elapsed Time:', time() - t0)
 
-            #------------------------------------------------------------------
+            # ------------------------------------------------------------------
             # Step 4: Maximize the expected improvement function to obtain an
             # integer infill point.
-            #------------------------------------------------------------------
+            # ------------------------------------------------------------------
 
             if disp:
                 print("AMIEGO-Iter: %d" % self.iter_count)
@@ -449,11 +449,11 @@ class AMIEGO_driver(Driver):
 
                 if disp:
                     t0 = time()
-                    print("======================MINLPBB-Start=====================================")
-                minlp.run(problem)
+                    print(22 * "=" + "MINLPBB-Start" + 37 * "=" )
+                minlp.run()
                 if disp:
                     print('Elapsed Time:', time() - t0)
-                    print("======================MINLPBB-End=======================================")
+                    print(22 * "=" + "MINLPBB-End" + 39 * "=" )
 
                 eflag_MINLPBB = minlp.eflag_MINLPBB
                 x0I = minlp.xopt
@@ -490,21 +490,22 @@ class AMIEGO_driver(Driver):
             else:
                 ec2 = 1
 
-            #------------------------------------------------------------------
+            # ------------------------------------------------------------------
             # Step 5: Check for termination
-            #------------------------------------------------------------------
+            # ------------------------------------------------------------------
 
             c_start = c_end
             c_end += 1
 
-            term  = np.abs(ei_tol_rel*best_obj_norm)
+            term = np.abs(ei_tol_rel * best_obj_norm)
             if (not pre_opt and ei_max <= term) or ec2 == 1 or tot_newpt_added >= max_pt_lim:
                 terminate = True
                 if disp:
                     if ei_max <= term:
                         print("No Further improvement expected! Terminating algorithm.")
                     elif ec2 == 1:
-                        print("No new point found that improves the surrogate. Terminating algorithm.")
+                        print("No new point found that improves the surrogate. "
+                              "Terminating algorithm.")
                     elif tot_newpt_added >= max_pt_lim:
                         print("Maximum allowed sampling limit reached! Terminating algorithm.")
 

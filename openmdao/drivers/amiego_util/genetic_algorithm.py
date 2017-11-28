@@ -69,10 +69,10 @@ class Genetic_Algorithm():
             old_gen, i_shuffled = self.shuffle(old_gen)
             fitness = fitness[i_shuffled]
             i_old_gen = i_old_gen[i_shuffled]
-            index = np.array(range(0, self.npop-1, 2))
+            index = np.array(range(0, self.npop - 1, 2))
             i_min = np.zeros((len(index), 1))
             for ii in range(len(index)):
-                i_min[ii] = np.argmin(np.array([fitness[index[ii]], fitness[index[ii]+1]]))
+                i_min[ii] = np.argmin(np.array([fitness[index[ii]], fitness[index[ii] + 1]]))
             selected = i_min.flatten() + range(0, self.npop-1, 2)
             for ii in range(len(selected)):
                 if j == 0 and ii == 0:
@@ -87,8 +87,8 @@ class Genetic_Algorithm():
         for i in range(self.npop//2):
             for j in range(self.lchrom):
                 if sites[i][j] < Pc:
-                    new_gen[2*i][j] = old_gen[2*i+1][j]
-                    new_gen[2*i+1][j] = old_gen[2*i][j]
+                    new_gen[2*i][j] = old_gen[2*i + 1][j]
+                    new_gen[2*i + 1][j] = old_gen[2*i][j]
         return new_gen
 
     def mutate(self, old_gen, Pm):
