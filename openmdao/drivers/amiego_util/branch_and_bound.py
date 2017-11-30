@@ -207,7 +207,7 @@ class Branch_and_Bound(Driver):
         # Active set fields: (Updated!)
         #     Aset = [[NodeNumber, lb, ub, LBD, UBD, nodeHist], [], ..]
         active_set = []
-        nodeHist = nodeHistclass()
+        nodeHist = NodeHistclass()
         UBD_term = UBD
 
         comm = problem.model.comm
@@ -457,10 +457,9 @@ class Branch_and_Bound(Driver):
             dis_flag = ['Y', 'Y']
 
         else:
-            #--------------------------------------------------------------
-            # Step 3: Partition the current rectangle as per the new
-            # branching scheme.
-            #--------------------------------------------------------------
+            #--------------------------------------------------------------------------
+            # Step 3: Partition the current rectangle as per the new branching scheme.
+            #--------------------------------------------------------------------------
             child_info = np.zeros([2, 3])
             dis_flag = [' ', ' ']
 
@@ -517,7 +516,7 @@ class Branch_and_Bound(Driver):
                         if np.abs((LBD_prev - LBD_NegConEI) / LBD_prev) < 0.005:
                             priority_flag = 1
 
-                    nodeHist_new = nodeHistclass()
+                    nodeHist_new = NodeHistclass()
                     nodeHist_new.ubd_track = ubd_track
                     nodeHist_new.ubdloc_best = ubdloc_best
                     nodeHist_new.priority_flag = priority_flag
@@ -616,14 +615,12 @@ class Branch_and_Bound(Driver):
         rL = x_comL[k:]
         rU = x_comU[k:]
 
-        dr_drhat = np.zeros([n, n])
-        for ii in range(n):
-            dr_drhat[ii, ii] = rU[ii, 0] - rL[ii, 0]
+        dr_drhat = np.diag(rU[:, 0] - rL[:, 0])
 
         T2_num = np.dot(np.dot(R_inv, one), np.dot(R_inv, one).T)
         T2_den = np.dot(one.T, np.dot(R_inv, one))
         d2S_dr2 = 2.0*SigmaSqr*(R_inv - (T2_num/T2_den))
-        H_hat = np.dot(np.dot(dr_drhat, d2S_dr2), dr_drhat.T)
+        H_hat = np.dot(np.dot(dr_drhat, d2S_dr2), dr_drhat)
 
         # Use Gershgorin's circle theorem to find a lower bound of the
         # min eigen value of the hessian
@@ -680,6 +677,20 @@ class Branch_and_Bound(Driver):
     def calc_SSqr_convex(self, dv_dict):
         """
         Callback function for minimization of mean squared error.
+
+        Parameters
+        ----------
+        dv_dict : dict
+            Dictionary of design variable values.
+
+        Returns
+        -------
+        func_dict : dict
+            Dictionary of all functional variables evaluated at design point.
+
+        fail : int
+            0 for successful function evaluation
+            1 for unsuccessful function evaluation
         """
         fail = 0
 
@@ -725,6 +736,23 @@ class Branch_and_Bound(Driver):
     def calc_SSqr_convex_grad(self, dv_dict, func_dict):
         """
         Callback function for gradient of mean squared error.
+
+        Parameters
+        ----------
+        dv_dict : dict
+            Dictionary of design variable values.
+
+        func_dict : dict
+            Dictionary of all functional variables evaluated at design point.
+
+        Returns
+        -------
+        sens_dict : dict
+            Dictionary of dictionaries for gradient of each dv/func pair
+
+        fail : int
+            0 for successful function evaluation
+            1 for unsuccessful function evaluation
         """
         fail = 0
 
@@ -772,8 +800,8 @@ class Branch_and_Bound(Driver):
         sens_dict['con'] = OrderedDict()
         sens_dict['con']['x'] = Ain_hat
 
-        print('obj deriv', sens_dict['obj']['x'] )
-        print('con deriv', sens_dict['con']['x'])
+        #print('obj deriv', sens_dict['obj']['x'] )
+        #print('con deriv', sens_dict['con']['x'])
         return sens_dict, fail
 
     def minimize_y(self, x_comL, x_comU, Ain_hat, bin_hat, surrogate):
@@ -799,8 +827,8 @@ class Branch_and_Bound(Driver):
 
         if app == 1:
             x0 = 0.5*(xhat_comL + xhat_comU)
-            #bnds = [(xhat_comL[ii], xhat_comU[ii]) for ii in range(len(xhat_comL))]
 
+        # Just storing stuff here to pull it out in the callback.
         self.x_comL = x_comL
         self.x_comU = x_comU
         self.Ain_hat = Ain_hat
@@ -811,7 +839,8 @@ class Branch_and_Bound(Driver):
                                                  xhat_comU, ncon=len(bin_hat),
                                                  title='minimize_y',
                                                  options=options,
-                                                 jac=Ain_hat)
+                                                 jac=Ain_hat,
+                                                 sens=self.calc_y_hat_convex_grad)
 
         yL = opt_f
         # if not succ_flag:
@@ -828,20 +857,35 @@ class Branch_and_Bound(Driver):
         return yL, eflag_yL
 
     def calc_y_hat_convex(self, dv_dict):
+        """
+        Callback function for objective during minimization of y_hat.
+
+        Parameters
+        ----------
+        dv_dict : dict
+            Dictionary of design variable values.
+
+        Returns
+        -------
+        func_dict : dict
+            Dictionary of all functional variables evaluated at design point.
+
+        fail : int
+            0 for successful function evaluation
+            1 for unsuccessful function evaluation
+        """
         fail = 0
 
         x_com = dv_dict['x']
         surrogate = self.current_surr
-        x_comL = self.x_comL
-        x_comU = self.x_comU
 
         X = surrogate.X
         c_r = surrogate.c_r
         mu = surrogate.mu
         n, k = X.shape
 
-        rL = x_comL[k:]
-        rU = x_comU[k:]
+        rL = self.x_comL[k:]
+        rU = self.x_comU[k:]
         rhat = np.array([x_com[k:]]).reshape(n, 1)
         r = rL + rhat*(rU - rL)
 
@@ -859,6 +903,57 @@ class Branch_and_Bound(Driver):
         #print('x', dv_dict)
         #print('obj', func_dict['obj'])
         return func_dict, fail
+
+    def calc_y_hat_convex_grad(self, dv_dict, func_dict):
+        """
+        Callback function for gradient during minimization of y_hat.
+
+        Parameters
+        ----------
+        dv_dict : dict
+            Dictionary of design variable values.
+
+        func_dict : dict
+            Dictionary of all functional variables evaluated at design point.
+
+        Returns
+        -------
+        sens_dict : dict
+            Dictionary of dictionaries for gradient of each dv/func pair
+
+        fail : int
+            0 for successful function evaluation
+            1 for unsuccessful function evaluation
+        """
+        fail = 0
+        x_com = dv_dict['x']
+        surrogate = self.current_surr
+
+        X = surrogate.X
+        c_r = surrogate.c_r
+        n, k = X.shape
+        nn = len(x_com)
+
+        rL = self.x_comL[k:]
+        rU = self.x_comU[k:]
+
+        dobj_dr = c_r*(rU - rL)
+
+        # Objectives
+        sens_dict = OrderedDict()
+        sens_dict['obj'] = OrderedDict()
+        sens_dict['obj']['x'] = np.zeros((1, nn))
+        sens_dict['obj']['x'][:, k:] = dobj_dr.T
+
+        # Constraints
+        Ain_hat = self.Ain_hat
+
+        sens_dict['con'] = OrderedDict()
+        sens_dict['con']['x'] = Ain_hat
+
+        #print('obj deriv', sens_dict['obj']['x'] )
+        #print('con deriv', sens_dict['con']['x'])
+        return sens_dict, fail
 
 
 def update_active_set(active_set, ubd):
@@ -939,7 +1034,7 @@ def interval_analysis(lb_x, ub_x, surrogate):
                 t2L = np.max(np.array([0, np.min(fact)]))
                 t2U = np.max(np.array([0, np.max(fact)]))
 
-                fact = np.array([-thetas[h]*t2L, -thetas[h]*t2U])
+                fact = -thetas[h] * np.array([t2L, t2U])
                 t3L[i, h] = np.min(fact)
                 t3U[i, h] = np.max(fact)
 
@@ -970,7 +1065,8 @@ def lin_underestimator(lb, ub, surrogate):
 
     dist_r = ub_r - lb_r
     dist_x = ub_x - lb_x
-    x_m_h = (ub_x + lb_x)/2.0
+    x_m = (ub_x + lb_x)/2.0
+    r_m = (lb_r + ub_r)/2.0
 
     for i in range(n):
 
@@ -985,19 +1081,18 @@ def lin_underestimator(lb, ub, surrogate):
         b1_hat[i] = a1*lb_r[i] + b1
 
         # T3: Linearize under-estimator of -ln[r_i] = a3*r[i] + b3
-        r_m_i = (lb_r[i] + ub_r[i])/2.0
-        a3 = -1.0/r_m_i
-        b3 = -np.log(r_m_i) - a3*r_m_i
+        a3 = -1.0/r_m[i]
+        b3 = -np.log(r_m[i]) - a3*r_m[i]
         a3_hat[i, i] = a3*dist_r[i]
         b3_hat[i] = a3*lb_r[i] + b3
 
         for h in range(k):
             # T2: Linearize under-estimator of thetas_h*(x_h - X_h_i)^2 = a4[i,h]*x_h[h] + b4[i,h]
 
-            fact = x_m_h[h] - X[i, h]
+            fact = x_m[h] - X[i, h]
             a2[i, h] = p*thetas[h]*fact**(p - 1.0)
             yy = thetas[h]*fact**p
-            b2[i, h] = -a2[i, h]*x_m_h[h] + yy
+            b2[i, h] = -a2[i, h]*x_m[h] + yy
 
             # T4: Linearize under-estimator of -theta_h*(x_h - X_h_i)^2 = a4[i,h]*x_h[h] + b4[i,h]
             yy2 = -thetas[h]*(ub_x[h] - X[i, h])**p
@@ -1017,6 +1112,7 @@ def lin_underestimator(lb, ub, surrogate):
                               -(b3_hat + np.sum(b4, axis=1).reshape(n, 1))), axis=0)
 
     return Ain_hat, bin_hat
+
 
 def calc_conEI_norm(xval, obj_surrogate, SSqr=None, y_hat=None):
     """
@@ -1077,12 +1173,14 @@ def init_nodes(N, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt, xopt, no
 
             #Branching scheme stays same
             xloc_iter = np.round(xL_iter + 0.49*(xU_iter - xL_iter))
+
             # Choose the largest edge
             l_iter = (xU_iter - xL_iter).argmax()
             if xloc_iter[l_iter]<xU_iter[l_iter]:
                 delta = 0.5 #0<delta<1
             else:
                 delta = -0.5 #-1<delta<0
+
             for ii in range(2):
                 lb = xL_iter.copy()
                 ub = xU_iter.copy()
@@ -1108,7 +1206,11 @@ def init_nodes(N, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt, xopt, no
 
     return args
 
-class nodeHistclass():
+
+class NodeHistclass():
+    """
+    Data object for keeping track of statistics of each branch and bound node.
+    """
     def __init__(self):
         self.ubd_track = np.array([1])
         self.ubdloc_best = np.inf
