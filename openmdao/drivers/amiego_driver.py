@@ -320,7 +320,7 @@ class AMIEGO_driver(Driver):
             # ------------------------------------------------------------------
 
             if disp:
-                print(22 * "=" + "ContinuousOptimization-Start" + 37 * "=" )
+                print(22 * "=" + "ContinuousOptimization-Start" + 37 * "=")
                 t0 = time()
 
             # In initial iteration, we only optimize points if we don't have samples of the cons
@@ -380,7 +380,7 @@ class AMIEGO_driver(Driver):
 
             if disp:
                 print('Elapsed Time:', time() - t0)
-                print(22 * "=" + "ContinuousOptimization-End" + 39 * "=" )
+                print(22 * "=" + "ContinuousOptimization-End" + 39 * "=")
                 t0 = time()
 
             # ------------------------------------------------------------------
@@ -449,11 +449,11 @@ class AMIEGO_driver(Driver):
 
                 if disp:
                     t0 = time()
-                    print(22 * "=" + "MINLPBB-Start" + 37 * "=" )
+                    print(22 * "=" + "MINLPBB-Start" + 37 * "=")
                 minlp.run()
                 if disp:
                     print('Elapsed Time:', time() - t0)
-                    print(22 * "=" + "MINLPBB-End" + 39 * "=" )
+                    print(22 * "=" + "MINLPBB-End" + 39 * "=")
 
                 eflag_MINLPBB = minlp.eflag_MINLPBB
                 x0I = minlp.xopt

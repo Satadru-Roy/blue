@@ -1,5 +1,5 @@
 """
-Optimize a function with pyoptsparse.
+Optimize a python function or method with pyoptsparse.
 """
 from __future__ import print_function
 
@@ -20,7 +20,8 @@ def snopt_opt(objfun, desvar, lb, ub, ncon=None, title=None, options=None,
     """
     Find optimal values using SNOPT from pyoptsparse.
 
-    If SNOPT is not available, use other avaiilable optimizer.
+    If SNOPT is not available, use other avaiilable optimizer. The desvar is an array of variables
+    named 'x', and the objective is named 'obj'. All constraints are in a vector called 'con'.
 
     Parameters
     ----------
@@ -68,7 +69,7 @@ def snopt_opt(objfun, desvar, lb, ub, ncon=None, title=None, options=None,
                          upper=ub.flatten())
     if ncon is not None:
         opt_prob.addConGroup('con', ncon, upper=np.zeros((ncon)), linear=True, wrt='x',
-                             jac={'x' : jac})
+                             jac={'x': jac})
     opt_prob.addObj('obj')
 
     # Fall back on SLSQP or COBYLA if SNOPT isn't there
@@ -81,7 +82,7 @@ def snopt_opt(objfun, desvar, lb, ub, ncon=None, title=None, options=None,
 
     if OPTIMIZER == 'SNOPT':
         opt.setOption('Major iterations limit', 100)
-        #opt.setOption('Verify level', -1)
+        opt.setOption('Verify level', -1)
         opt.setOption('iSumm', 0)
         opt.setOption('iPrint', 0)
     elif OPTIMIZER == 'SLSQP':
@@ -90,14 +91,11 @@ def snopt_opt(objfun, desvar, lb, ub, ncon=None, title=None, options=None,
         opt.setOption('ITMAX', 100)
 
     sol = opt(opt_prob, sens=sens, sensStep=1.0e-6)
-    #print(sol)
+    # print(sol)
 
     x = sol.getDVs()['x']
     f = sol.objectives['obj'].value
     success_flag = sol.optInform['value'] < 2
     msg = sol.optInform['text']
-
-    if 'krig' not in title:
-        pass
 
     return x, f, success_flag, msg

@@ -116,8 +116,8 @@ class KrigingSurrogate(SurrogateModel):
         Y_mean = np.mean(y, axis=0)
         Y_std = np.std(y, axis=0)
 
-        X_std[X_std == 0.] = 1.
-        Y_std[Y_std == 0.] = 1.
+        X_std[X_std == 0.] = 1.0
+        Y_std[Y_std == 0.] = 1.0
 
         X = (x - X_mean) / X_std
         Y = (y - Y_mean) / Y_std
@@ -128,15 +128,15 @@ class KrigingSurrogate(SurrogateModel):
         self.Y_mean, self.Y_std = Y_mean, Y_std
 
         if KPLS:
-            #Maximum number of hyper-parameters we want to afford
+            # Maximum number of hyper-parameters we want to afford
             pcom_max = 3
 
-            #TODO Use some criteria to find optimal number of hyper-parameters.
+            # TODO Use some criteria to find optimal number of hyper-parameters.
             self.pcom = min([pcom_max, self.n_dims])
 
             self.Wstar = self.KPLS_reg()
             if self.pcom >= 3:
-                #TODO: Read this from a file
+                # TODO: Read this from a file
                 start_point = [[0.5, 0.5714, 0.5714],
                                [0.6429, 0.0714, 0.3571],
                                [0.9286, 0.7857, 0.7857],
@@ -201,7 +201,7 @@ class KrigingSurrogate(SurrogateModel):
         point: list
             Starting point for opt."""
 
-        x0 = -3.0*np.ones((self.pcom, )) + point*(5.0*np.ones((self.pcom, )))
+        x0 = -3.0 * np.ones((self.pcom, )) + point * (5.0 * np.ones((self.pcom, )))
 
         # Use SNOPT (or fallback on other pyoptsparse optimizer.)
         if self.use_snopt:
@@ -209,7 +209,7 @@ class KrigingSurrogate(SurrogateModel):
                 """ pyoptsparse callback function."""
                 fail = 0
                 thetas = dv_dict['x']
-                x = np.dot((self.Wstar**2),(10.0**thetas).T).flatten()
+                x = np.dot((self.Wstar**2), (10.0**thetas).T).flatten()
                 loglike = self._calculate_reduced_likelihood_params(x)[0]
 
                 # Objective
@@ -235,7 +235,7 @@ class KrigingSurrogate(SurrogateModel):
 
             def _calcll(thetas):
                 """ Scipy Cobyla Callback function"""
-                x = np.dot((self.Wstar**2),(10.0**thetas).T).flatten()
+                x = np.dot((self.Wstar**2), (10.0**thetas).T).flatten()
                 loglike = self._calculate_reduced_likelihood_params(x)[0]
                 return -loglike
 
@@ -255,7 +255,7 @@ class KrigingSurrogate(SurrogateModel):
 
     def _calculate_reduced_likelihood_params(self, thetas=None):
         """
-        Calculates a quantity with the same maximum location as the log-likelihood for a given theta.
+        Compute quantity with the same maximum location as the log-likelihood for a given theta.
 
         Parameters
         ----------
@@ -291,10 +291,10 @@ class KrigingSurrogate(SurrogateModel):
         # by Alexander Forrester, Dr. Andras Sobester, Andy Keane
         one = np.ones([self.n_samples, 1])
         R_inv = Vh.T.dot(np.einsum('i,ij->ij', inv_factors, U.T))
-        mu = np.dot(one.T, np.dot(R_inv, Y))/np.dot(one.T, np.dot(R_inv, one))
-        c_r = Vh.T.dot(np.einsum('j,kj,kl->jl', inv_factors, U, (Y - mu*one)))
+        mu = np.dot(one.T, np.dot(R_inv, Y)) / np.dot(one.T, np.dot(R_inv, one))
+        c_r = Vh.T.dot(np.einsum('j,kj,kl->jl', inv_factors, U, (Y - mu * one)))
         logdet = -np.sum(np.log(inv_factors))
-        SigmaSqr = np.dot((Y - mu*one).T, c_r).sum(axis=0) / self.n_samples
+        SigmaSqr = np.dot((Y - mu * one).T, c_r).sum(axis=0) / self.n_samples
         reduced_likelihood = -(np.log(np.sum(SigmaSqr)) + logdet / self.n_samples)
 
         params['c_r'] = c_r
@@ -303,7 +303,7 @@ class KrigingSurrogate(SurrogateModel):
         params['Vh'] = Vh
         params['R_inv'] = R_inv
         params['mu'] = mu
-        params['SigmaSqr'] = SigmaSqr #This is wrt normalized y
+        params['SigmaSqr'] = SigmaSqr  #T his is wrt normalized y
 
         return reduced_likelihood, params
 
@@ -342,7 +342,7 @@ class KrigingSurrogate(SurrogateModel):
         for r_i, x_i in zip(r, x_n):
             r_i[:] = np.exp(-thetas.dot(np.square((x_i - X).T)))
 
-        if r.shape[1] > 1: #Ensure r is always a column vector
+        if r.shape[1] > 1:  # Ensure r is always a column vector
             r = r.T
 
         # Predictor
@@ -353,7 +353,7 @@ class KrigingSurrogate(SurrogateModel):
             one = np.ones([self.n_samples, 1])
             R_inv = self.R_inv
             mse  = self.SigmaSqr*(1.0 - np.dot(r.T, np.dot(R_inv, r)) + \
-            ((1.0 - np.dot(one.T, np.dot(R_inv, r)))**2/np.dot(one.T, np.dot(R_inv, one))))
+            ((1.0 - np.dot(one.T, np.dot(R_inv, r)))**2 / np.dot(one.T, np.dot(R_inv, one))))
 
             # Forcing negative RMSE to zero if negative due to machine precision
             mse[mse < 0.] = 0.
@@ -381,7 +381,7 @@ class KrigingSurrogate(SurrogateModel):
         # memory efficient than, diag(X).dot(Y) for vector X and 2D array Y.
         # I.e. Z[i,j] = X[i]*Y[i,j]
         gradr = r * -2 * np.einsum('i,ij->ij', thetas, (x_n - self.X).T)
-        jac = np.einsum('i,j,ij->ij', self.Y_std, 1./self.X_std, gradr.dot(self.c_r).T)
+        jac = np.einsum('i,j,ij->ij', self.Y_std, 1.0 / self.X_std, gradr.dot(self.c_r).T)
         return jac
 
     def KPLS_reg(self):
@@ -395,7 +395,7 @@ class KrigingSurrogate(SurrogateModel):
             while delta > 1.0e-6:
                 kk = kk + 1.
                 zk = np.dot(A, qk)
-                qk = zk/np.linalg.norm(zk)
+                qk = zk / np.linalg.norm(zk)
                 delta = np.linalg.norm(qk - qk_prev)
                 qk_prev = qk
             return qk
@@ -409,14 +409,14 @@ class KrigingSurrogate(SurrogateModel):
             tl_hat = tl/(np.dot(tl.T, tl))
             pl = (np.dot(Xl.T, tl_hat)).T
             cl = np.dot(yl.T, tl_hat)
-            if l == 0: #FIXME: Re-code this
-                W = wl*1.0
-                P = pl.T*1.0
+            if l == 0:  # FIXME: Re-code this
+                W = wl * 1.0
+                P = pl.T * 1.0
             else:
                 W = np.concatenate((W, wl), axis=1)
                 P = np.concatenate((P, pl.T), axis=1)
             Xl = Xl - np.dot(tl, pl)
-            yl = yl - cl*tl
-        Wstar = np.dot(W, np.linalg.inv(np.dot(P.T, W))) #TODO: See if there are better ways to do inverse
+            yl = yl - cl * tl
+        Wstar = np.dot(W, np.linalg.inv(np.dot(P.T, W)))  # TODO: See if there are better ways to do inverse
         return Wstar
 

@@ -1,6 +1,7 @@
 """
-Class definition for the Branch_and_Bound subdriver. This driver can only be run
-plugged into the AMIEGO driver.
+Class definition for the Branch_and_Bound subdriver.
+
+This pseudo-driver can only be run when plugged into the AMIEGO driver's minlp slot.
 
 This is the branch and bound algorithm that maximizes the constrained
 expected improvement function and returns an integer infill point. The
@@ -24,13 +25,11 @@ from six import iteritems
 from six.moves import range
 
 import numpy as np
-from scipy.optimize import minimize
 from scipy.special import erf
 from pyDOE import lhs
 
 from openmdao.core.driver import Driver
 from openmdao.drivers.amiego_util.genetic_algorithm import Genetic_Algorithm
-from openmdao.drivers.amiego_util.kriging import KrigingSurrogate
 from openmdao.drivers.amiego_util.optimize_function import snopt_opt
 from openmdao.utils.concurrent import concurrent_eval, concurrent_eval_lb
 from openmdao.utils.general_utils import set_pyoptsparse_opt
@@ -42,8 +41,9 @@ OPT, OPTIMIZER = set_pyoptsparse_opt('SNOPT')
 
 class Branch_and_Bound(Driver):
     """
-    Class definition for the Branch_and_Bound driver. This driver can only be run
-    plugged into the AMIEGO driver.
+    Class definition for the Branch_and_Bound driver.
+
+    This pseudo-driver can only be run when plugged into the AMIEGO driver's minlp slot.
 
     This is the branch and bound algorithm that maximizes the constrained
     expected improvement function and returns an integer infill point. The
@@ -57,7 +57,6 @@ class Branch_and_Bound(Driver):
         """
         Initialize the Branch_and_Bound driver.
         """
-
         super(Branch_and_Bound, self).__init__()
 
         # What we support
@@ -69,10 +68,6 @@ class Branch_and_Bound(Driver):
         self.supports['linear_constraints'] = False
         self.supports['gradients'] = False
         self.supports['mixed_integer'] = False
-
-        # Default surrogate. User can slot a modified one, but it essentially
-        # has to provide what Kriging provides.
-        self.surrogate = KrigingSurrogate
 
         # Options
         opt = self.options
@@ -184,7 +179,7 @@ class Branch_and_Bound(Driver):
         # Initial B&B bounds are infinite.
         UBD = np.inf
         LBD = -np.inf
-        LBD_prev =- np.inf
+        LBD_prev = -np.inf
 
         # Copy our desvars' user specified upper and lower bounds
         xL_iter = self.xI_lb.copy()
@@ -193,7 +188,7 @@ class Branch_and_Bound(Driver):
         num_init_sam = num_des
         init_sam = lhs(num_des, samples=num_init_sam, criterion='center')
         for ii in range(num_init_sam):
-            xopt_ii = np.round(xL_iter + init_sam[ii]*(xU_iter - xL_iter)).reshape(num_des)
+            xopt_ii = np.round(xL_iter + init_sam[ii] * (xU_iter - xL_iter)).reshape(num_des)
             fopt_ii = self.objective_callback(xopt_ii)
             if fopt_ii < UBD:
                 self.eflag_MINLPBB = True
@@ -236,7 +231,7 @@ class Branch_and_Bound(Driver):
 
             # Start with 1 node.
             args = [(xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
-                xopt, node_num, nodeHist, ubd_count)]
+                     xopt, node_num, nodeHist, ubd_count)]
 
         # Main Loop
         terminate = False
@@ -314,20 +309,20 @@ class Branch_and_Bound(Driver):
                     # c. Delete the selected node from the Active set of nodes
                     del active_set[ind_LBD]
 
-                    #--------------------------------------------------------------
-                    #Step 7: Check for convergence
-                    #--------------------------------------------------------------
+                    # --------------------------------------------------------------
+                    # Step 7: Check for convergence
+                    # --------------------------------------------------------------
                     diff = np.abs(UBD - LBD)
                     if diff < atol:
                         terminate = True
                         if disp:
-                            print("="*85)
-                            print("Terminating! Absolute difference between the upper " + \
+                            print("=" * 85)
+                            print("Terminating! Absolute difference between the upper " +
                                   "and lower bound is below the tolerence limit.")
             else:
                 terminate = True
                 if disp:
-                    print("="*85)
+                    print("=" * 85)
                     print("Terminating! No new node to explore.")
                     print("Max Node", node_num)
 
@@ -345,13 +340,12 @@ class Branch_and_Bound(Driver):
 
         This function encapsulates the portion of the code that runs in parallel.
         """
-
         if OPTIMIZER == 'SNOPT':
-            options = {'Major optimality tolerance' : 1.0e-5}
+            options = {'Major optimality tolerance': 1.0e-5}
         elif OPTIMIZER == 'SLSQP':
-            options = {'ACC' : 1.0e-5}
+            options = {'ACC': 1.0e-5}
         elif OPTIMIZER == 'CONMIN':
-            options = {'DABFUN' : 1.0e-5}
+            options = {'DABFUN': 1.0e-5}
 
         active_tol = self.options['active_tol']
         local_search = self.options['local_search']
@@ -364,17 +358,19 @@ class Branch_and_Bound(Driver):
 
         new_nodes = []
 
-        #Keep this to 0.49 to always round towards bottom-left
+        # Keep this to 0.49 to always round towards bottom-left
         xloc_iter = np.round(xL_iter + 0.49 * (xU_iter - xL_iter))
         floc_iter = self.objective_callback(xloc_iter)
 
         # Genetic Algorithm
         if local_search == 0:
-
+            # --------------------------------------------------------------
+            # Step 2: Obtain a local solution using a GA.
+            # --------------------------------------------------------------
             ga = Genetic_Algorithm(calc_conEI_norm)
 
             bits = np.ceil(np.log2(xU_iter - xL_iter + 1))
-            bits[bits<=0] = 1
+            bits[bits <= 0] = 1
             vub_vir = (2**bits - 1) + xL_iter
             if nodeHist.priority_flag == 1:
                 max_gen = 300
@@ -396,14 +392,13 @@ class Branch_and_Bound(Driver):
 
         # LHS Sampling or SNOPT
         else:
-            #TODO Future research on sampling here
+            # TODO Future research on sampling here
             num_samples = np.round(np.max([10, np.min([50, num_des / nodeHist.priority_flag])]))
             init_sam_node = lhs(num_des, samples=num_samples, criterion='center')
-            l_succ = 0
             t_GA = 0.
 
             for ii in range(int(num_samples)):
-                xloc_iter_new = np.round(xL_iter + init_sam_node[ii]*(xU_iter - xL_iter))
+                xloc_iter_new = np.round(xL_iter + init_sam_node[ii] * (xU_iter - xL_iter))
                 floc_iter_new = self.objective_callback(xloc_iter_new)
 
                 # SNOPT
@@ -411,19 +406,19 @@ class Branch_and_Bound(Driver):
                     # TODO: did we lose a tol check here?
                     # active_tol: #Perform at non-flat starting point
                     if np.abs(floc_iter_new) > -np.inf:
-                        l_succ += 1
-                        #--------------------------------------------------------------
-                        #Step 2: Obtain a local solution
-                        #--------------------------------------------------------------
+                        # --------------------------------------------------------------
+                        # Step 2: Obtain a local solution
+                        # --------------------------------------------------------------
                         # Using a gradient-based method here.
                         # TODO: Make it more pluggable.
                         def _objcall(dv_dict):
-                            """ Callback function"""
+                            """
+                            Compute objective for SNOPT.
+                            """
                             fail = 0
                             x = dv_dict['x']
                             # Objective
                             func_dict = {}
-                            confac_flag = False
                             func_dict['obj'] = self.objective_callback(x)[0]
                             return func_dict, fail
 
@@ -453,13 +448,13 @@ class Branch_and_Bound(Driver):
             # TODO : Did we lose ths? -> #and UBD<=-1.0e-3:
             child_info = np.array([[par_node, np.inf, floc_iter], [par_node, np.inf, floc_iter]])
 
-            #Fathomed due to no change in UBD_loc for 'trace_iter' generations
+            # Fathomed due to no change in UBD_loc for 'trace_iter' generations
             dis_flag = ['Y', 'Y']
 
         else:
-            #--------------------------------------------------------------------------
+            # --------------------------------------------------------------------------
             # Step 3: Partition the current rectangle as per the new branching scheme.
-            #--------------------------------------------------------------------------
+            # --------------------------------------------------------------------------
             child_info = np.zeros([2, 3])
             dis_flag = [' ', ' ']
 
@@ -467,9 +462,9 @@ class Branch_and_Bound(Driver):
             l_iter = (xU_iter - xL_iter).argmax()
 
             if xloc_iter[l_iter] < xU_iter[l_iter]:
-                delta = 0.5  #0<delta<1
+                delta = 0.5  # 0<delta<1
             else:
-                delta = -0.5  #-1<delta<0
+                delta = -0.5  # -1<delta<0
 
             for ii in range(2):
                 lb = xL_iter.copy()
@@ -479,10 +474,10 @@ class Branch_and_Bound(Driver):
                 elif ii == 1:
                     lb[l_iter] = np.ceil(xloc_iter[l_iter] + delta)
 
-                if np.linalg.norm(ub - lb) > active_tol: #Not a point
-                    #--------------------------------------------------------------
+                if np.linalg.norm(ub - lb) > active_tol:  # Not a point
+                    # --------------------------------------------------------------
                     # Step 4: Obtain an LBD of f in the newly created node
-                    #--------------------------------------------------------------
+                    # --------------------------------------------------------------
                     S4_fail = False
                     x_comL, x_comU, Ain_hat, bin_hat = gen_coeff_bound(lb, ub, obj_surrogate)
                     sU, eflag_sU = self.maximize_S(x_comL, x_comU, Ain_hat, bin_hat,
@@ -506,10 +501,10 @@ class Branch_and_Bound(Driver):
                     else:
                         LBD_NegConEI = max(NegEI, LBD_prev)
 
-                    #--------------------------------------------------------------
+                    # --------------------------------------------------------------
                     # Step 5: Store any new node inside the active set that has LBD
                     # lower than the UBD.
-                    #--------------------------------------------------------------
+                    # --------------------------------------------------------------
 
                     priority_flag = 0
                     if LBD_NegConEI < np.inf and LBD_prev < np.inf:
@@ -540,21 +535,21 @@ class Branch_and_Bound(Driver):
                     # Flag for No child created
                     dis_flag[ii] = 'x'
 
-        #Update the active set whenever better solution found
+        # Update the active set whenever better solution found
         if floc_iter < UBD:
             UBD = floc_iter
             fopt = floc_iter
             xopt = xloc_iter.copy().reshape(num_des)
 
         if disp:
-            if (self.iter_count-1) % 25 == 0:
+            if (self.iter_count - 1) % 25 == 0:
                 # Display output in a tabular format
-                print("="*95)
+                print("=" * 95)
                 print("%19s%12s%14s%21s" % ("Global", "Parent", "Child1", "Child2"))
                 template = "%s%8s%10s%8s%9s%11s%10s%11s%11s%11s"
                 print(template % ("Iter", "LBD", "UBD", "Node", "Node1", "LBD1",
                                   "Node2", "LBD2", "Flocal", "GA time"))
-                print("="*95)
+                print("=" * 95)
             template = "%3d%10.2f%10.2f%6d%8d%1s%13.2f%8d%1s%13.2f%9.2f%9.2f"
             print(template % (self.iter_count, LBD, UBD, par_node, child_info[0, 0],
                               dis_flag[0], child_info[0, 1], child_info[1, 0],
@@ -562,27 +557,32 @@ class Branch_and_Bound(Driver):
 
         return UBD, fopt, xopt, new_nodes
 
-    def objective_callback(self, xI, con_EI=False):
+    def objective_callback(self, xI):
         """
         Evalute main problem objective at the requested point.
 
-        Objective is the expected improvment function with modifications to make it concave.
+        Objective is the expected improvement function with modifications to make it concave.
+
+        Parameters
+        ----------
+        xI : ndarray
+            Value of design variables.
+
+        Returns
+        -------
+        float
+            Objective value
         """
         obj_surrogate = self.obj_surrogate
-
         X = obj_surrogate.X
-        k = np.shape(X)[1]
 
         # Normalized as per the convention in openmdao_Alpha:Kriging.
         xval = (xI - obj_surrogate.X_mean.flatten()) / obj_surrogate.X_std.flatten()
 
         NegEI = calc_conEI_norm(xval, obj_surrogate)
 
-        P = 0.0
-        f = NegEI + P
-
-        #print(xI, f)
-        return f
+        # print(xI, f)
+        return NegEI
 
     def maximize_S(self, x_comL, x_comU, Ain_hat, bin_hat, surrogate):
         """
@@ -590,14 +590,33 @@ class Branch_and_Bound(Driver):
 
         This method finds an upper bound to the SigmaSqr Error, and scales up 'r' to provide a
         smooth design space for gradient-based approach.
-        """
 
+        Parameters
+        ----------
+        x_comL : ndarray
+            Full lower bounds vector
+        x_comU : ndarray
+            Full upper bounds vector.
+        Ain_hat : ndarray
+            Matrix Ain_hat for linear model of constraints.
+        bin_hat : ndarray
+            Vector bin_hat for linear model of constraints.
+        surrogate : <KrigingSurrogate>
+            Surrogate model of optimized objective with respect to integer design variables.
+
+        Return
+        ------
+        float
+            Maximized upper bound for sigma squared error.
+        bool
+            Success flag True if successful.
+        """
         if OPTIMIZER == 'SNOPT':
-            options = {'Major optimality tolerance' : 1.0e-5}
+            options = {'Major optimality tolerance': 1.0e-5}
         elif OPTIMIZER == 'SLSQP':
-            options = {'ACC' : 1.0e-5}
+            options = {'ACC': 1.0e-5}
         elif OPTIMIZER == 'CONMIN':
-            options = {'DABFUN' : 1.0e-5}
+            options = {'DABFUN': 1.0e-5}
 
         R_inv = surrogate.R_inv
         SigmaSqr = surrogate.SigmaSqr
@@ -619,7 +638,7 @@ class Branch_and_Bound(Driver):
 
         T2_num = np.dot(np.dot(R_inv, one), np.dot(R_inv, one).T)
         T2_den = np.dot(one.T, np.dot(R_inv, one))
-        d2S_dr2 = 2.0*SigmaSqr*(R_inv - (T2_num/T2_den))
+        d2S_dr2 = 2.0 * SigmaSqr * (R_inv - (T2_num / T2_den))
         H_hat = np.dot(np.dot(dr_drhat, d2S_dr2), dr_drhat)
 
         # Use Gershgorin's circle theorem to find a lower bound of the
@@ -637,10 +656,10 @@ class Branch_and_Bound(Driver):
             eig_lb[ii] = dia_ele - np.min(np.array([sum_rw, sum_col]))
 
         eig_min = np.min(eig_lb)
-        alpha = np.max(np.array([0.0, -0.5*eig_min]))
+        alpha = np.max(np.array([0.0, -0.5 * eig_min]))
 
         # Maximize S
-        x0 = 0.5*(xhat_comL + xhat_comU)
+        x0 = 0.5 * (xhat_comL + xhat_comU)
 
         # Just storing stuff here to pull it out in the callback.
         surrogate._alpha = alpha
@@ -666,8 +685,8 @@ class Branch_and_Bound(Driver):
         #     eflag_sU = True
         eflag_sU = True
         tol = self.options['con_tol']
-        for ii in range(2*n):
-            if np.dot(Ain_hat[ii, :], opt_x) > (bin_hat[ii ,0] + tol):
+        for ii in range(2 * n):
+            if np.dot(Ain_hat[ii, :], opt_x) > (bin_hat[ii, 0] + tol):
                 eflag_sU = False
                 break
 
@@ -709,15 +728,15 @@ class Branch_and_Bound(Driver):
         rU = self.x_comU[k:]
         rhat = x_com[k:].reshape(n, 1)
 
-        r = rL + rhat*(rU - rL)
+        r = rL + rhat * (rU - rL)
         rhat_L = self.xhat_comL[k:]
         rhat_U = self.xhat_comU[k:]
 
         term0 = np.dot(R_inv, r)
-        term1 = -SigmaSqr*(1.0 - r.T.dot(term0) + \
-        ((1.0 - one.T.dot(term0))**2/(one.T.dot(np.dot(R_inv, one)))))
+        term1 = -SigmaSqr * (1.0 - r.T.dot(term0) +
+                             ((1.0 - one.T.dot(term0))**2 / (one.T.dot(np.dot(R_inv, one)))))
 
-        term2 = alpha*(rhat - rhat_L).T.dot(rhat - rhat_U)
+        term2 = alpha * (rhat - rhat_L).T.dot(rhat - rhat_U)
         S2 = term1 + term2
 
         # Objectives
@@ -729,8 +748,8 @@ class Branch_and_Bound(Driver):
         bin_hat = self.bin_hat
 
         func_dict['con'] = np.dot(Ain_hat, x_com) - bin_hat.flatten()
-        #print('x', dv_dict)
-        #print('obj', func_dict['obj'])
+        # print('x', dv_dict)
+        # print('obj', func_dict['obj'])
         return func_dict, fail
 
     def calc_SSqr_convex_grad(self, dv_dict, func_dict):
@@ -773,18 +792,18 @@ class Branch_and_Bound(Driver):
         rU = self.x_comU[k:]
         rhat = x_com[k:].reshape(n, 1)
 
-        r = rL + rhat*(rU - rL)
+        r = rL + rhat * (rU - rL)
         rhat_L = self.xhat_comL[k:]
         rhat_U = self.xhat_comU[k:]
 
         dr_drhat = np.diag((rU - rL).flat)
 
         term0 = np.dot(R_inv, r)
-        term1 = ((1.0 - one.T.dot(term0))/(one.T.dot(np.dot(R_inv, one))))*np.dot(R_inv, one)
-        term = 2.0*SigmaSqr*(term0 + term1)
+        term1 = ((1.0 - one.T.dot(term0)) / (one.T.dot(np.dot(R_inv, one)))) * np.dot(R_inv, one)
+        term = 2.0 * SigmaSqr * (term0 + term1)
 
         dterm1 = np.dot(dr_drhat, term)
-        dterm2 = alpha*(2.0*rhat - rhat_L - rhat_U)
+        dterm2 = alpha * (2.0 * rhat - rhat_L - rhat_U)
 
         dobj_dr = (dterm1 + dterm2).T
 
@@ -800,18 +819,40 @@ class Branch_and_Bound(Driver):
         sens_dict['con'] = OrderedDict()
         sens_dict['con']['x'] = Ain_hat
 
-        #print('obj deriv', sens_dict['obj']['x'] )
-        #print('con deriv', sens_dict['con']['x'])
+        # print('obj deriv', sens_dict['obj']['x'] )
+        # print('con deriv', sens_dict['con']['x'])
         return sens_dict, fail
 
     def minimize_y(self, x_comL, x_comU, Ain_hat, bin_hat, surrogate):
+        """
+        Minimize the lower bound.
 
+        Parameters
+        ----------
+        x_comL : ndarray
+            Full lower bounds vector
+        x_comU : ndarray
+            Full upper bounds vector.
+        Ain_hat : ndarray
+            Matrix Ain_hat for linear model of constraints.
+        bin_hat : ndarray
+            Vector bin_hat for linear model of constraints.
+        surrogate : <KrigingSurrogate>
+            Surrogate model of optimized objective with respect to integer design variables.
+
+        Return
+        ------
+        float
+            Maximized upper bound for sigma squared error.
+        bool
+            Success flag True if successful.
+        """
         if OPTIMIZER == 'SNOPT':
-            options = {'Major optimality tolerance' : 1.0e-8}
+            options = {'Major optimality tolerance': 1.0e-8}
         elif OPTIMIZER == 'SLSQP':
-            options = {'ACC' : 1.0e-8}
+            options = {'ACC': 1.0e-8}
         elif OPTIMIZER == 'CONMIN':
-            options = {'DABFUN' : 1.0e-8}
+            options = {'DABFUN': 1.0e-8}
 
         # 1- Formulates y_hat as LP (weaker bound)
         # 2- Uses non-convex relaxation technique (stronger bound) [Future release]
@@ -826,7 +867,7 @@ class Branch_and_Bound(Driver):
         xhat_comU[k:] = 1.0
 
         if app == 1:
-            x0 = 0.5*(xhat_comL + xhat_comU)
+            x0 = 0.5 * (xhat_comL + xhat_comU)
 
         # Just storing stuff here to pull it out in the callback.
         self.x_comL = x_comL
@@ -849,7 +890,7 @@ class Branch_and_Bound(Driver):
         #     eflag_yL = True
         eflag_yL = True
         tol = self.options['con_tol']
-        for ii in range(2*n):
+        for ii in range(2 * n):
             if np.dot(Ain_hat[ii, :], opt_x) > (bin_hat[ii, 0] + tol):
                 eflag_yL = False
                 break
@@ -887,7 +928,7 @@ class Branch_and_Bound(Driver):
         rL = self.x_comL[k:]
         rU = self.x_comU[k:]
         rhat = np.array([x_com[k:]]).reshape(n, 1)
-        r = rL + rhat*(rU - rL)
+        r = rL + rhat * (rU - rL)
 
         y_hat = mu + np.dot(r.T, c_r)
 
@@ -900,8 +941,8 @@ class Branch_and_Bound(Driver):
         bin_hat = self.bin_hat
 
         func_dict['con'] = np.dot(Ain_hat, x_com) - bin_hat.flatten()
-        #print('x', dv_dict)
-        #print('obj', func_dict['obj'])
+        # print('x', dv_dict)
+        # print('obj', func_dict['obj'])
         return func_dict, fail
 
     def calc_y_hat_convex_grad(self, dv_dict, func_dict):
@@ -937,7 +978,7 @@ class Branch_and_Bound(Driver):
         rL = self.x_comL[k:]
         rU = self.x_comU[k:]
 
-        dobj_dr = c_r*(rU - rL)
+        dobj_dr = c_r * (rU - rL)
 
         # Objectives
         sens_dict = OrderedDict()
@@ -951,14 +992,17 @@ class Branch_and_Bound(Driver):
         sens_dict['con'] = OrderedDict()
         sens_dict['con']['x'] = Ain_hat
 
-        #print('obj deriv', sens_dict['obj']['x'] )
-        #print('con deriv', sens_dict['con']['x'])
+        # print('obj deriv', sens_dict['obj']['x'] )
+        # print('con deriv', sens_dict['con']['x'])
         return sens_dict, fail
 
 
 def update_active_set(active_set, ubd):
-    """ Remove variables from the active set data structure if their current
-    upper bound exceeds the given value.
+    """
+    Update the active set.
+
+    Remove variables from the active set data structure if their current upper bound exceeds the
+    given value.
 
     Args
     ----
@@ -983,11 +1027,33 @@ def gen_coeff_bound(xI_lb, xI_ub, surrogate):
     variable r and the coefficients for the linearized under estimator
     constraints. The version accepts design bound in the original design
     space, converts it to normalized design space.
-    """
 
-    #Normalized as per Openmdao kriging model
-    xL_hat = (xI_lb - surrogate.X_mean.flatten())/surrogate.X_std.flatten()
-    xU_hat = (xI_ub - surrogate.X_mean.flatten())/surrogate.X_std.flatten()
+    Parameters
+    ----------
+    lb_x : ndarray
+        Lower bound of the integer design variables.
+    ub_x : ndarray
+        Upper bound of the integer design variables.
+    surrogate : <KrigingSurrogate>
+        Surrogate model of optimized objective with respect to integer design variables.
+
+    Returns
+    -------
+    ndarray
+        Full lower bounds vector
+    ndarray
+        Full upper bounds vector.
+    ndarray
+        Matrix Ain_hat for linear model of constraints.
+    ndarray
+        Vector bin_hat for linear model of constraints.
+    """
+    mean = surrogate.X_mean.flatten()
+    std = surrogate.X_std.flatten()
+
+    # Normalized as per Openmdao kriging model
+    xL_hat = (xI_lb - mean) / std
+    xU_hat = (xI_ub - mean) / std
 
     rL, rU = interval_analysis(xL_hat, xU_hat, surrogate)
 
@@ -1003,12 +1069,29 @@ def gen_coeff_bound(xI_lb, xI_ub, surrogate):
 
 
 def interval_analysis(lb_x, ub_x, surrogate):
-    """ The module predicts the lower and upper bound of the artificial
-    variable 'r' from the bounds of the design variable x r is related to x
-    by the following equation:
+    """
+    Predict lower and upper bounds for r.
+
+    The module predicts the lower and upper bound of the artificial variable 'r' from the bounds
+    of the design variable x r is related to x by the following equation:
 
     r_i = exp(-sum(theta_h*(x_h - x_h_i)^2))
 
+    Parameters
+    ----------
+    lb_x : ndarray
+        Lower bound of the integer design variables.
+    ub_x : ndarray
+        Upper bound of the integer design variables.
+    surrogate : <KrigingSurrogate>
+        Surrogate model of optimized objective with respect to integer design variables.
+
+    Returns
+    -------
+    ndarray
+        Predicted lower bound for r
+    ndarray
+        Predicted upper bound for r
     """
     p = surrogate.p
 
@@ -1023,9 +1106,9 @@ def interval_analysis(lb_x, ub_x, surrogate):
         t1L = lb_x - X
         t1U = ub_x - X
 
-        fac1 = t1L*t1L
-        fac2 = t1L*t1U
-        fac3 = t1U*t1U
+        fac1 = t1L * t1L
+        fac2 = t1L * t1U
+        fac3 = t1U * t1U
 
         for i in range(n):
             for h in range(k):
@@ -1050,23 +1133,53 @@ def interval_analysis(lb_x, ub_x, surrogate):
 
 
 def lin_underestimator(lb, ub, surrogate):
+    """
+    Compute the coefficients of the linearized underestimator constraints.
+
+    Parameters
+    ----------
+    lb : ndarray
+        Lower bound vector.
+    ub : ndarray
+        Upper bound vector
+    surrogate : <KrigingSurrogate>
+        Surrogate model of optimized objective with respect to integer design variables.
+
+    Returns
+    -------
+    ndarray
+        Matrix Ain_hat for linear model of constraints.
+    ndarray
+        Vector bin_hat for linear model of constraints.
+    """
     X = surrogate.X
     thetas = surrogate.thetas
     p = surrogate.p
     n, k = X.shape
 
-    lb_x = lb[:k]; ub_x = ub[:k]
-    lb_r = lb[k:]; ub_r = ub[k:]
+    lb_x = lb[:k]
+    ub_x = ub[:k]
+    lb_r = lb[k:]
+    ub_r = ub[k:]
 
-    a1_hat = np.zeros([n, n]); a3_hat = np.zeros([n, n])
-    a2 = np.empty([n, k]); a4 = np.empty([n, k])
-    b2 = np.empty([n, k]); b4 = np.empty([n, k])
-    b1_hat = np.zeros([n, 1]); b3_hat = np.zeros([n, 1])
+    a1_hat = np.zeros([n, n])
+    a3_hat = np.zeros([n, n])
+    a2 = np.empty([n, k])
+    a4 = np.empty([n, k])
+    b2 = np.empty([n, k])
+    b4 = np.empty([n, k])
+    b1_hat = np.empty([n, 1])
+    b3_hat = np.empty([n, 1])
 
     dist_r = ub_r - lb_r
     dist_x = ub_x - lb_x
-    x_m = (ub_x + lb_x)/2.0
-    r_m = (lb_r + ub_r)/2.0
+    x_m = 0.5 * (ub_x + lb_x)
+    r_m = 0.5 * (lb_r + ub_r)
+
+    ub_fact = (ub_x - X.T)**p
+    lb_fact = (lb_x - X.T)**p
+    fact_p = (x_m - X.T)**p
+    fact_pm1 = (x_m - X.T)**(p - 1)
 
     for i in range(n):
 
@@ -1074,36 +1187,35 @@ def lin_underestimator(lb, ub, surrogate):
         if ub_r[i] <= lb_r[i]:
             a1 = 0.0
         else:
-            a1 = (np.log(ub_r[i]) - np.log(lb_r[i]))/dist_r[i]
+            a1 = (np.log(ub_r[i]) - np.log(lb_r[i])) / dist_r[i]
 
-        b1 = np.log(ub_r[i]) - a1*ub_r[i]
-        a1_hat[i, i] = a1*dist_r[i]
-        b1_hat[i] = a1*lb_r[i] + b1
+        b1 = np.log(ub_r[i]) - a1 * ub_r[i]
+        a1_hat[i, i] = a1 * dist_r[i]
+        b1_hat[i] = a1 * lb_r[i] + b1
 
         # T3: Linearize under-estimator of -ln[r_i] = a3*r[i] + b3
-        a3 = -1.0/r_m[i]
-        b3 = -np.log(r_m[i]) - a3*r_m[i]
-        a3_hat[i, i] = a3*dist_r[i]
-        b3_hat[i] = a3*lb_r[i] + b3
+        a3 = -1.0 / r_m[i]
+        b3 = -np.log(r_m[i]) - a3 * r_m[i]
+        a3_hat[i, i] = a3 * dist_r[i]
+        b3_hat[i] = a3 * lb_r[i] + b3
 
         for h in range(k):
             # T2: Linearize under-estimator of thetas_h*(x_h - X_h_i)^2 = a4[i,h]*x_h[h] + b4[i,h]
 
-            fact = x_m[h] - X[i, h]
-            a2[i, h] = p*thetas[h]*fact**(p - 1.0)
-            yy = thetas[h]*fact**p
-            b2[i, h] = -a2[i, h]*x_m[h] + yy
+            a2[i, h] = p * thetas[h] * fact_pm1[h, i]
+            yy = thetas[h] * fact_p[h, i]
+            b2[i, h] = -a2[i, h] * x_m[h] + yy
 
             # T4: Linearize under-estimator of -theta_h*(x_h - X_h_i)^2 = a4[i,h]*x_h[h] + b4[i,h]
-            yy2 = -thetas[h]*(ub_x[h] - X[i, h])**p
-            yy1 = -thetas[h]*(lb_x[h] - X[i, h])**p
+            yy1 = -thetas[h] * lb_fact[h, i]
 
             if ub_x[h] <= lb_x[h]:
                 a4[i, h] = 0.0
             else:
-                a4[i, h] = (yy2 - yy1)/dist_x[h]
+                yy2 = -thetas[h] * ub_fact[h, i]
+                a4[i, h] = (yy2 - yy1) / dist_x[h]
 
-            b4[i, h] = -a4[i, h]*lb_x[h] + yy1
+            b4[i, h] = -a4[i, h] * lb_x[h] + yy1
 
     Ain1 = np.concatenate((a2, a4), axis=0)
     Ain2 = np.concatenate((a1_hat, a3_hat), axis=0)
@@ -1117,6 +1229,22 @@ def lin_underestimator(lb, ub, surrogate):
 def calc_conEI_norm(xval, obj_surrogate, SSqr=None, y_hat=None):
     """
     Evaluate the expected improvement in the normalized design space.
+
+    Parameters
+    ----------
+    xval : ndarray
+        Value of the current integer design variables.
+    obj_surrogate : <KrigingSurrogate>
+        Surrogate model of optimized objective with respect to integer design variables.
+    SSqr : float
+        Pre-calculated value for sigma squared from successful maximize S.
+    y_hat : ndarray
+        Pre-calculated value for y_hat from successful maximize S.
+
+    Returns
+    -------
+    float
+        Negative of the expected improvement.
     """
     y_min = obj_surrogate.y_best
 
@@ -1132,15 +1260,15 @@ def calc_conEI_norm(xval, obj_surrogate, SSqr=None, y_hat=None):
         n = np.shape(X)[0]
         one = np.ones([n, 1])
 
-        r = np.exp(-np.sum(thetas.T*(xval - X)**p, 1)).reshape(n, 1)
+        r = np.exp(-np.sum(thetas.T * (xval - X)**p, 1)).reshape(n, 1)
 
         y_hat = mu + np.dot(r.T, c_r)
         term0 = np.dot(R_inv, r)
 
         # Note: This dot product with one stuff seems to be faster than np.sum for these small
         # sized matrices.
-        SSqr = SigmaSqr*(1.0 - r.T.dot(term0) + \
-                         ((1.0 - one.T.dot(term0))**2)/(one.T.dot(np.dot(R_inv, one))))
+        SSqr = SigmaSqr * (1.0 - r.T.dot(term0) +
+                           ((1.0 - one.T.dot(term0))**2) / (one.T.dot(np.dot(R_inv, one))))
 
     if SSqr <= 1.0e-30:
         if abs(SSqr) <= 1.0e-30:
@@ -1150,18 +1278,30 @@ def calc_conEI_norm(xval, obj_surrogate, SSqr=None, y_hat=None):
     else:
         dy = y_min - y_hat
         SSqr = abs(SSqr)
-        ei1 = dy*0.5*(1.0 + erf((1/np.sqrt(2))*(dy/np.sqrt(SSqr))))
-        ei2 = np.sqrt(SSqr)*(1.0/np.sqrt(2.0*np.pi))*np.exp(-0.5*(dy**2/SSqr))
+        ei1 = dy * 0.5 * (1.0 + erf((1.0 / np.sqrt(2.0)) * (dy / np.sqrt(SSqr))))
+        ei2 = np.sqrt(SSqr) * (1.0 / np.sqrt(2.0 * np.pi)) * np.exp(-0.5 * (dy**2 / SSqr))
         NegEI = -(ei1 + ei2)
 
     return NegEI
 
 
 def init_nodes(N, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt, xopt, nodeHist, ubd_count):
-    pts = (xU_iter-xL_iter) + 1.0
+    """
+    Compute a set of starting nodes based on number of processors.
+
+    Parameters
+    ----------
+    N : integer
+        Number of processors
+
+    Returns
+    -------
+    list of tuples
+        Each tuple is the data for one node.
+    """
+    pts = (xU_iter - xL_iter) + 1.0
     com_enum = np.prod(pts, axis=0)
-    tot_pts = 0.0
-    num_cut = min(N-1, com_enum-1)
+    num_cut = min(N - 1, com_enum - 1)
     if num_cut > 0:
         new_nodes = [[xL_iter, xU_iter, com_enum]]
         for cut in range(num_cut):
@@ -1171,24 +1311,24 @@ def init_nodes(N, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt, xopt, no
             xL_iter, xU_iter, _ = new_nodes[ind_maxA]
             del new_nodes[ind_maxA]
 
-            #Branching scheme stays same
-            xloc_iter = np.round(xL_iter + 0.49*(xU_iter - xL_iter))
+            # Branching scheme stays same
+            xloc_iter = np.round(xL_iter + 0.49 * (xU_iter - xL_iter))
 
             # Choose the largest edge
             l_iter = (xU_iter - xL_iter).argmax()
-            if xloc_iter[l_iter]<xU_iter[l_iter]:
-                delta = 0.5 #0<delta<1
+            if xloc_iter[l_iter] < xU_iter[l_iter]:
+                delta = 0.5  # 0<delta<1
             else:
-                delta = -0.5 #-1<delta<0
+                delta = -0.5  # -1<delta<0
 
             for ii in range(2):
                 lb = xL_iter.copy()
                 ub = xU_iter.copy()
                 if ii == 0:
-                    ub[l_iter] = np.floor(xloc_iter[l_iter]+delta)
+                    ub[l_iter] = np.floor(xloc_iter[l_iter] + delta)
                 elif ii == 1:
-                    lb[l_iter] = np.ceil(xloc_iter[l_iter]+delta)
-                pts = (ub-lb) + 1.0
+                    lb[l_iter] = np.ceil(xloc_iter[l_iter] + delta)
+                pts = (ub - lb) + 1.0
                 enum = np.prod(pts, axis=0)
                 new_node = [lb, ub, enum]
                 new_nodes.append(new_node)
@@ -1197,9 +1337,8 @@ def init_nodes(N, xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt, xopt, no
         n_nodes = len(new_nodes)
         for ii in range(n_nodes):
             xL_iter, xU_iter, enum = new_nodes[ii]
-            tot_pts += enum
             args.append((xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
-                         xopt, ii+1, nodeHist, ubd_count))
+                         xopt, ii + 1, nodeHist, ubd_count))
     else:
         args = [(xL_iter, xU_iter, par_node, LBD_prev, LBD, UBD, fopt,
                 xopt, 0, nodeHist, ubd_count)]
