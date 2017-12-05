@@ -127,11 +127,10 @@ class AMIEGO_driver(Driver):
         cont_opt._objs = OrderedDict()
         cont_opt._designvars = OrderedDict()
 
-        minlp = self.minlp
-
         if 'disp' in cont_opt.options:
             cont_opt.options['disp'] = self.options['disp']
 
+        minlp = self.minlp
         minlp._setup_driver(problem)
         minlp.options['disp'] = self.options['disp']
 
@@ -146,6 +145,8 @@ class AMIEGO_driver(Driver):
         self.sampling = sampling_abs_names
         self.n_train = len(self.sampling[abs_name])
 
+        # If we attached a set of pre optimized cases, we need to convert the keys from promoted
+        # to absolute names and keep them.
         obj_sampling_abs_names = {}
         if self.obj_sampling is not None:
             for name, data in iteritems(self.obj_sampling):
@@ -191,12 +192,11 @@ class AMIEGO_driver(Driver):
         for name in self.i_idx:
             minlp._designvars[name] = self._designvars[name]
 
-        # It should be perfectly okay to 'share' obj with the
-        # MINLP optimizers.
+        # Both MINLP and Continuous see the objective
+        cont_opt._objs = self._objs
         minlp._objs = self._objs
 
         # Continuous optimizer sees all constraints.
-        cont_opt._objs = self._objs
         for name, con in iteritems(self._cons):
             cont_opt._cons[name] = con
 

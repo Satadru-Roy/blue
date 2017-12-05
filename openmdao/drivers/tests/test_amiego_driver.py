@@ -119,7 +119,6 @@ class TestAMIEGOdriver(unittest.TestCase):
         prob.driver = AMIEGO_driver()
         #prob.driver.cont_opt.options['tol'] = 1e-12
         #prob.driver.options['disp'] = False
-        #model.deriv_options['type'] = 'fd'
         prob.driver.cont_opt = pyOptSparseDriver()
         prob.driver.cont_opt.options['optimizer'] = 'SNOPT'
 
