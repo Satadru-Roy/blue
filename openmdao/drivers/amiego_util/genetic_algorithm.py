@@ -1,5 +1,8 @@
 """
 Genetic algorithm used to assist Branch and Bound.
+
+This is the Simple Genetic Algorithm implementation based on 2009 AAE550: MDO Lecture notes of
+Prof. William A. Crossley.
 """
 import copy
 
@@ -10,20 +13,58 @@ import numpy as np
 from pyDOE import lhs
 
 
-class Genetic_Algorithm():
+class GeneticAlgorithm():
     """
-    This is the Simple Genetic Algorithm implementation
-    based on 2009 AAE550: MDO Lecture notes of
-    Prof. William A. Crossley
+    Simple Genetic Algorithm.
+
+    This is the Simple Genetic Algorithm implementation based on 2009 AAE550: MDO Lecture notes of
+    Prof. William A. Crossley. It can be used standalone or as part of the OpenMDAO Driver.
     """
-    def __init__(self, objfun):
+    def __init__(self, objfun, comm=None):
+        """
+        Initialize genetic algorithm object.
+
+        Parameters
+        ----------
+        objfun : function
+            Objective callback function.
+
+        comm : MPI communicator or None
+            The MPI communicator that will be used objective evaluation for each generation.
+        """
         self.objfun = objfun
+        self.comm = None
 
         self.lchrom = 0
         self.npop = 0
         self.elite = True
 
-    def execute_ga(self, vlb, vub, bits=8, pop_size=24, max_gen=1000):
+    def execute_ga(self, vlb, vub, bits, pop_size, max_gen):
+        """
+        Perform the genetic algorithm.
+
+        Parameters
+        ----------
+        vlb : ndarray
+            Lower bounds array.
+        ulb : ndarray
+            Upper bounds array.
+        bits : int
+            Number of bits to encode the design space.
+        pop_size : int
+            Number of points in the population.
+        max_gen : int
+            Number of generations to run the GA.
+
+        Returns
+        -------
+        ndaray
+            Best design point
+        float
+            Objective value at best design point.
+        int
+            Number of successful function evaluations.
+        """
         xopt = copy.deepcopy(vlb)
         fopt = np.inf
         self.lchrom = int(np.sum(bits))
@@ -50,8 +91,11 @@ class Genetic_Algorithm():
             # Evaluate points in this generation.
             for ii in range(self.npop):
                 x = x_pop[ii]
-                fitness[ii] = self.objfun(x)
-                nfit += 1
+                fitness[ii], success = self.objfun(x)
+                if success:
+                    nfit += 1
+                else:
+                    fitness[ii] = np.inf
 
             # Elitism means replace worst performing point with best from previous generation.
             if elite and generation > 0:
@@ -91,7 +135,8 @@ class Genetic_Algorithm():
             selected = i_min.flatten() + range(0, self.npop - 1, 2)
             for ii in range(len(selected)):
                 if j == 0 and ii == 0:
-                    new_gen = np.array([old_gen[int(selected[ii])]]) #np.concatenate((new_gen,old_gen[selected[ii]]),axis = 0)
+                    #np.concatenate((new_gen,old_gen[selected[ii]]),axis = 0)
+                    new_gen = np.array([old_gen[int(selected[ii])]])
                 else:
                     new_gen = np.append(new_gen, np.array([old_gen[int(selected[ii])]]), axis=0)
         return new_gen
@@ -138,26 +183,47 @@ class Genetic_Algorithm():
         return old_gen[index], index
 
     def decode(self, gen, vlb, vub, bits):
-        no_para = len(bits)
-        coarse = (vub - vlb)/(2**bits - 1)
-        x = np.zeros((self.npop, no_para))
+        """
+        Decode from binary array to real value array.
+
+        Parameters
+        ----------
+        gen : ndarray
+            Population of points, encoded.
+        vlb : ndarray
+            Lower bound array.
+        ulb : ndarray
+            Upper bound array.
+        bits : int
+            Number of bits for decoding.
+
+        Returns
+        -------
+        ndarray
+            Decoded design variable values.
+        """
+        num_desvar = len(bits)
+        interval = (vub - vlb)/(2**bits - 1)
+        x = np.zeros((self.npop, num_desvar))
         for kk in range(self.npop):
             sbit = 1
             ebit = 0
-            for jj in range(no_para):
-                ebit = int(bits[jj]) + ebit
+            for jj in range(num_desvar):
+                ebit += int(bits[jj])
                 accum = 0.0
-                ADD = 1
+                add_flag = True
                 for ii in range(sbit, ebit + 1):
                     pbit = ii + 1 - sbit
                     if gen[kk][ii - 1] == 1:
-                        if ADD == 1:
-                            accum = accum + (2.0**(bits[jj] - pbit + 1) - 1)
-                            ADD = 0
+                        fact = (2**(bits[jj] - pbit + 1) - 1)
+                        if add_flag == 1:
+                            accum += fact
+                            add_flag = False
                         else:
-                            accum = accum - (2.0**(bits[jj] - pbit + 1) - 1)
-                            ADD = 1
-                x[kk][jj] = accum * coarse[jj] + vlb[jj]
+                            accum -= fact
+                            add_flag = True
+
+                x[kk][jj] = accum * interval[jj] + vlb[jj]
                 sbit = ebit + 1
         return x
 
