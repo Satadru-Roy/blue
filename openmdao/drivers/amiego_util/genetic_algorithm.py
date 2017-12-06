@@ -78,15 +78,15 @@ class GeneticAlgorithm():
         Pm = (self.lchrom + 1.0) / (2.0 * pop_size * np.sum(bits))
         elite = self.elite
 
-        # new_gen = 1 - np.round(np.random.rand(self.npop, self.lchrom))
+        # TODO: from an user-supplied intial population
+        # new_gen, lchrom = encode(x0, vlb, vub, bits)
         new_gen = np.round(lhs(self.lchrom, self.npop, criterion='center'))
-        # new_gen, lchrom = encode(x0, vlb, vub, bits) #TODO: from an user-supplied intial population
 
         # Main Loop
         nfit = 0
         for generation in range(max_gen + 1):
             old_gen = copy.deepcopy(new_gen)
-            x_pop  = self.decode(old_gen, vlb, vub, bits)
+            x_pop = self.decode(old_gen, vlb, vub, bits)
 
             # Evaluate points in this generation.
             for ii in range(self.npop):
@@ -122,12 +122,10 @@ class GeneticAlgorithm():
         return xopt, fopt, nfit
 
     def tournament(self, old_gen, fitness):
-        i_old_gen = np.array(range(self.npop))
         new_gen = []
         for j in range(2):
             old_gen, i_shuffled = self.shuffle(old_gen)
             fitness = fitness[i_shuffled]
-            i_old_gen = i_old_gen[i_shuffled]
             index = np.array(range(0, self.npop - 1, 2))
             i_min = np.zeros((len(index), 1))
             for ii in range(len(index)):
@@ -135,30 +133,66 @@ class GeneticAlgorithm():
             selected = i_min.flatten() + range(0, self.npop - 1, 2)
             for ii in range(len(selected)):
                 if j == 0 and ii == 0:
-                    #np.concatenate((new_gen,old_gen[selected[ii]]),axis = 0)
+                    # np.concatenate((new_gen,old_gen[selected[ii]]),axis = 0)
                     new_gen = np.array([old_gen[int(selected[ii])]])
                 else:
                     new_gen = np.append(new_gen, np.array([old_gen[int(selected[ii])]]), axis=0)
         return new_gen
 
     def crossover(self, old_gen, Pc):
+        """
+        Apply crossover to the current generation.
+
+        Crossover flips two adjacent genes.
+
+        Parameters
+        ----------
+        current_gen : ndarray
+            Points in current generation
+
+        Pc : float
+            Probability of crossover.
+
+        Returns
+        -------
+        ndarray
+            Current generation with crossovers applied.
+        """
         new_gen = copy.deepcopy(old_gen)
-        sites = np.random.rand(self.npop//2, self.lchrom)
-        for i in range(self.npop//2):
+        num_sites = self.npop // 2
+        sites = np.random.rand(num_sites, self.lchrom)
+        for i in range(num_sites):
             for j in range(self.lchrom):
                 if sites[i][j] < Pc:
                     new_gen[2 * i][j] = old_gen[2 * i + 1][j]
                     new_gen[2 * i + 1][j] = old_gen[2 * i][j]
         return new_gen
 
-    def mutate(self, old_gen, Pm):
+    def mutate(self, current_gen, Pm):
+        """
+        Apply mutations to the current generation.
+
+        A mutation flips the state of the gene from 0 to 1 or 1 to 0.
+
+        Parameters
+        ----------
+        current_gen : ndarray
+            Points in current generation
+
+        Pm : float
+            Probability of mutation.
+
+        Returns
+        -------
+        ndarray
+            Current generation with mutations applied.
+        """
+        # Note, this way is efficient for small number of mutations.
         temp = np.random.rand(self.npop, self.lchrom)
-        new_gen = copy.deepcopy(old_gen)
-        for ii in range(self.npop):
-            for jj in range(self.lchrom):
-                if temp[ii][jj] < Pm:
-                    new_gen[ii][jj] = 1 - old_gen[ii][jj]
-        return new_gen
+        idx, idy = np.where(temp < Pm)
+        for ii, jj in zip(idx, idy):
+            current_gen[ii][jj] = 1 - current_gen[ii][jj]
+        return current_gen
 
     def shuffle(self, old_gen):
         """
@@ -203,7 +237,7 @@ class GeneticAlgorithm():
             Decoded design variable values.
         """
         num_desvar = len(bits)
-        interval = (vub - vlb)/(2**bits - 1)
+        interval = (vub - vlb) / (2**bits - 1)
         x = np.zeros((self.npop, num_desvar))
         for kk in range(self.npop):
             sbit = 1
@@ -228,14 +262,34 @@ class GeneticAlgorithm():
         return x
 
     def encode(self, x, vlb, vub, bits):
+        """
+        Encode array of real values to array of binary arrays.
+
+        Parameters
+        ----------
+        x : ndarray
+            Design variable values.
+        vlb : ndarray
+            Lower bound array.
+        ulb : ndarray
+            Upper bound array.
+        bits : int
+            Number of bits for decoding.
+
+        Returns
+        -------
+        ndarray
+            Population of points, encoded.
+        """
+        # TODO : We need this method if we ever start with user defined initial sampling points.
         return
 
-    def test_func(self, x):
-        ''' Solution: xopt = [0.2857, -0.8571], fopt = 23.2933'''
-        A = (2*x[0] - 3*x[1])**2;
-        B = 18 - 32*x[0] + 12*x[0]**2 + 48*x[1] - 36*x[0]*x[1] + 27*x[1]**2;
-        C = (x[0] + x[1] + 1)**2;
-        D = 19 - 14*x[0] + 3*x[0]**2 - 14*x[1] + 6*x[0]*x[1] + 3*x[1]**2;
+    #def test_func(self, x):
+        #''' Solution: xopt = [0.2857, -0.8571], fopt = 23.2933'''
+        #A = (2*x[0] - 3*x[1])**2;
+        #B = 18 - 32*x[0] + 12*x[0]**2 + 48*x[1] - 36*x[0]*x[1] + 27*x[1]**2;
+        #C = (x[0] + x[1] + 1)**2;
+        #D = 19 - 14*x[0] + 3*x[0]**2 - 14*x[1] + 6*x[0]*x[1] + 3*x[1]**2;
 
-        f = (30 + A*B)*(1 + C*D);
-        return f
+        #f = (30 + A*B)*(1 + C*D);
+        #return f

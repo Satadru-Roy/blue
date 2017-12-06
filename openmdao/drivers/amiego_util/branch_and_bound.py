@@ -371,6 +371,7 @@ class Branch_and_Bound(Driver):
 
             bits = np.ceil(np.log2(xU_iter - xL_iter + 1)).astype(int)
             bits[bits <= 0] = 1
+            vub_vir = (2**bits - 1) + xL_iter
 
             # More important nodes get a higher population size and number of generations.
             if nodeHist.priority_flag == 1:
@@ -385,7 +386,7 @@ class Branch_and_Bound(Driver):
             t0 = time()
             self.xU_iter = xU_iter
             xloc_iter_new, floc_iter_new, nfit = \
-                ga.execute_ga(xL_iter, xU_iter, bits, pop_size, max_gen)
+                ga.execute_ga(xL_iter, vub_vir, bits, pop_size, max_gen)
             t_GA = time() - t0
 
             if floc_iter_new < floc_iter:
