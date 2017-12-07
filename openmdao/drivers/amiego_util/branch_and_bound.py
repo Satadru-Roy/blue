@@ -1023,9 +1023,11 @@ class Branch_and_Bound(Driver):
 
         P = 0.0
         rp = 100.0
+
         g = x/xU_iter - 1.0
-        for ii in range(num_des):
-            P += np.max([0, g[ii]])**2
+        idx = np.where(g > 0.0)
+        if len(idx) > 0:
+            P = np.sum(g[idx]**2)
 
         xval = (x - surrogate.X_mean.flatten()) / surrogate.X_std.flatten()
 

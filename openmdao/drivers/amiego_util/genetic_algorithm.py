@@ -139,10 +139,10 @@ class GeneticAlgorithm():
             New generation with best points.
         """
         new_gen = []
+        idx = np.array(range(0, self.npop - 1, 2))
         for j in range(2):
             old_gen, i_shuffled = self.shuffle(old_gen)
             fitness = fitness[i_shuffled]
-            idx = np.array(range(0, self.npop - 1, 2))
 
             # Each point competes with its neighbor; save the best.
             i_min = np.argmin(np.array([[fitness[idx]], [fitness[idx + 1]]]), axis=0)
