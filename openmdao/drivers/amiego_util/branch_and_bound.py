@@ -29,7 +29,7 @@ from scipy.special import erf
 from pyDOE import lhs
 
 from openmdao.core.driver import Driver
-from openmdao.drivers.amiego_util.genetic_algorithm import Genetic_Algorithm
+from openmdao.drivers.amiego_util.genetic_algorithm import GeneticAlgorithm
 from openmdao.drivers.amiego_util.optimize_function import snopt_opt
 from openmdao.utils.concurrent import concurrent_eval, concurrent_eval_lb
 from openmdao.utils.general_utils import set_pyoptsparse_opt
@@ -367,11 +367,13 @@ class Branch_and_Bound(Driver):
             # --------------------------------------------------------------
             # Step 2: Obtain a local solution using a GA.
             # --------------------------------------------------------------
-            ga = Genetic_Algorithm(calc_conEI_norm)
+            ga = GeneticAlgorithm(self.obj_for_GA)
 
-            bits = np.ceil(np.log2(xU_iter - xL_iter + 1))
+            bits = np.ceil(np.log2(xU_iter - xL_iter + 1)).astype(int)
             bits[bits <= 0] = 1
             vub_vir = (2**bits - 1) + xL_iter
+
+            # More important nodes get a higher population size and number of generations.
             if nodeHist.priority_flag == 1:
                 max_gen = 300
                 mfac = 6
@@ -382,8 +384,9 @@ class Branch_and_Bound(Driver):
             pop_size = mfac * L
 
             t0 = time()
+            self.xU_iter = xU_iter
             xloc_iter_new, floc_iter_new, nfit = \
-                ga.execute_ga(xL_iter, vub_vir, bits, pop_size, max_gen, obj_surrogate, xU_iter)
+                ga.execute_ga(xL_iter, vub_vir, bits, pop_size, max_gen)
             t_GA = time() - t0
 
             if floc_iter_new < floc_iter:
@@ -995,6 +998,40 @@ class Branch_and_Bound(Driver):
         # print('obj deriv', sens_dict['obj']['x'] )
         # print('con deriv', sens_dict['con']['x'])
         return sens_dict, fail
+
+    def obj_for_GA(self, x):
+        """
+        Evalute main problem objective at the requested point.
+
+        Objective is the expected improvement function with modifications to make it concave.
+
+        Parameters
+        ----------
+        x : ndarray
+            Value of design variables.
+
+        Returns
+        -------
+        float
+            Objective value
+        bool
+            Success flag, True if successful
+        """
+        surrogate = self.obj_surrogate
+        xU_iter = self.xU_iter
+        num_des = len(x)
+
+        P = 0.0
+        rp = 100.0
+        g = x/xU_iter - 1.0
+        for ii in range(num_des):
+            P += np.max([0, g[ii]])**2
+
+        xval = (x - surrogate.X_mean.flatten()) / surrogate.X_std.flatten()
+
+        NegEI = calc_conEI_norm(xval, surrogate)
+        f = NegEI + rp * P
+        return f, True
 
 
 def update_active_set(active_set, ubd):
