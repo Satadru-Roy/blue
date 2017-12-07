@@ -122,22 +122,34 @@ class GeneticAlgorithm():
         return xopt, fopt, nfit
 
     def tournament(self, old_gen, fitness):
+        """
+        Apply tournament selection and keep the best points.
+
+        Parameters
+        ----------
+        old_gen : ndarray
+            Points in current generation
+
+        fitness : ndarray
+            Objective value of each point.
+
+        Returns
+        -------
+        ndarray
+            New generation with best points.
+        """
         new_gen = []
         for j in range(2):
             old_gen, i_shuffled = self.shuffle(old_gen)
             fitness = fitness[i_shuffled]
-            index = np.array(range(0, self.npop - 1, 2))
-            i_min = np.zeros((len(index), 1))
-            for ii in range(len(index)):
-                i_min[ii] = np.argmin(np.array([fitness[index[ii]], fitness[index[ii] + 1]]))
-            selected = i_min.flatten() + range(0, self.npop - 1, 2)
-            for ii in range(len(selected)):
-                if j == 0 and ii == 0:
-                    # np.concatenate((new_gen,old_gen[selected[ii]]),axis = 0)
-                    new_gen = np.array([old_gen[int(selected[ii])]])
-                else:
-                    new_gen = np.append(new_gen, np.array([old_gen[int(selected[ii])]]), axis=0)
-        return new_gen
+            idx = np.array(range(0, self.npop - 1, 2))
+
+            # Each point competes with its neighbor; save the best.
+            i_min = np.argmin(np.array([[fitness[idx]], [fitness[idx + 1]]]), axis=0)
+            selected = i_min + idx
+            new_gen.append(old_gen[selected])
+
+        return np.concatenate(np.array(new_gen), axis=1).reshape(old_gen.shape)
 
     def crossover(self, old_gen, Pc):
         """
@@ -161,11 +173,10 @@ class GeneticAlgorithm():
         new_gen = copy.deepcopy(old_gen)
         num_sites = self.npop // 2
         sites = np.random.rand(num_sites, self.lchrom)
-        for i in range(num_sites):
-            for j in range(self.lchrom):
-                if sites[i][j] < Pc:
-                    new_gen[2 * i][j] = old_gen[2 * i + 1][j]
-                    new_gen[2 * i + 1][j] = old_gen[2 * i][j]
+        idx, idy = np.where(sites < Pc)
+        for ii, jj in zip(idx, idy):
+            new_gen[2 * ii][jj] = old_gen[2 * ii + 1][jj]
+            new_gen[2 * ii + 1][jj] = old_gen[2 * ii][jj]
         return new_gen
 
     def mutate(self, current_gen, Pm):
@@ -187,7 +198,6 @@ class GeneticAlgorithm():
         ndarray
             Current generation with mutations applied.
         """
-        # Note, this way is efficient for small number of mutations.
         temp = np.random.rand(self.npop, self.lchrom)
         idx, idy = np.where(temp < Pm)
         for ii, jj in zip(idx, idy):
