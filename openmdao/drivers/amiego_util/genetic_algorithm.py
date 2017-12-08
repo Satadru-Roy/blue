@@ -248,27 +248,15 @@ class GeneticAlgorithm():
         """
         num_desvar = len(bits)
         interval = (vub - vlb) / (2**bits - 1)
-        x = np.zeros((self.npop, num_desvar))
-        for kk in range(self.npop):
-            sbit = 1
-            ebit = 0
-            for jj in range(num_desvar):
-                ebit += int(bits[jj])
-                accum = 0.0
-                add_flag = True
-                for ii in range(sbit, ebit + 1):
-                    pbit = ii + 1 - sbit
-                    if gen[kk][ii - 1] == 1:
-                        fact = (2**(bits[jj] - pbit + 1) - 1)
-                        if add_flag == 1:
-                            accum += fact
-                            add_flag = False
-                        else:
-                            accum -= fact
-                            add_flag = True
-
-                x[kk][jj] = accum * interval[jj] + vlb[jj]
-                sbit = ebit + 1
+        x = np.empty((self.npop, num_desvar))
+        sbit = 0
+        ebit = 0
+        for jj in range(num_desvar):
+            exponents = 2**np.array(range(bits[jj] - 1, -1, -1))
+            ebit += bits[jj]
+            fact = exponents*(gen[:, sbit:ebit])
+            x[:, jj] = np.einsum('ij->i', fact) * interval[jj] + vlb[jj]
+            sbit = ebit
         return x
 
     def encode(self, x, vlb, vub, bits):

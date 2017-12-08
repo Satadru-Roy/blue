@@ -580,7 +580,7 @@ class Branch_and_Bound(Driver):
         X = obj_surrogate.X
 
         # Normalized as per the convention in openmdao_Alpha:Kriging.
-        xval = (xI - obj_surrogate.X_mean.flatten()) / obj_surrogate.X_std.flatten()
+        xval = (xI - obj_surrogate.X_mean) / obj_surrogate.X_std
 
         NegEI = calc_conEI_norm(xval, obj_surrogate)
 
@@ -689,7 +689,7 @@ class Branch_and_Bound(Driver):
         eflag_sU = True
         tol = self.options['con_tol']
         for ii in range(2 * n):
-            if np.dot(Ain_hat[ii, :], opt_x) > (bin_hat[ii, 0] + tol):
+            if np.dot(Ain_hat[ii, :], opt_x) > (bin_hat[ii] + tol):
                 eflag_sU = False
                 break
 
@@ -750,7 +750,7 @@ class Branch_and_Bound(Driver):
         Ain_hat = self.Ain_hat
         bin_hat = self.bin_hat
 
-        func_dict['con'] = np.dot(Ain_hat, x_com) - bin_hat.flatten()
+        func_dict['con'] = np.dot(Ain_hat, x_com) - bin_hat
         # print('x', dv_dict)
         # print('obj', func_dict['obj'])
         return func_dict, fail
@@ -894,7 +894,7 @@ class Branch_and_Bound(Driver):
         eflag_yL = True
         tol = self.options['con_tol']
         for ii in range(2 * n):
-            if np.dot(Ain_hat[ii, :], opt_x) > (bin_hat[ii, 0] + tol):
+            if np.dot(Ain_hat[ii, :], opt_x) > (bin_hat[ii] + tol):
                 eflag_yL = False
                 break
 
@@ -943,7 +943,7 @@ class Branch_and_Bound(Driver):
         Ain_hat = self.Ain_hat
         bin_hat = self.bin_hat
 
-        func_dict['con'] = np.dot(Ain_hat, x_com) - bin_hat.flatten()
+        func_dict['con'] = np.dot(Ain_hat, x_com) - bin_hat
         # print('x', dv_dict)
         # print('obj', func_dict['obj'])
         return func_dict, fail
@@ -1027,9 +1027,9 @@ class Branch_and_Bound(Driver):
         g = x/xU_iter - 1.0
         idx = np.where(g > 0.0)
         if len(idx) > 0:
-            P = np.sum(g[idx]**2)
+            P = np.einsum('i->', g[idx]**2)
 
-        xval = (x - surrogate.X_mean.flatten()) / surrogate.X_std.flatten()
+        xval = (x - surrogate.X_mean) / surrogate.X_std
 
         NegEI = calc_conEI_norm(xval, surrogate)
         f = NegEI + rp * P
@@ -1087,8 +1087,8 @@ def gen_coeff_bound(xI_lb, xI_ub, surrogate):
     ndarray
         Vector bin_hat for linear model of constraints.
     """
-    mean = surrogate.X_mean.flatten()
-    std = surrogate.X_std.flatten()
+    mean = surrogate.X_mean
+    std = surrogate.X_std
 
     # Normalized as per Openmdao kriging model
     xL_hat = (xI_lb - mean) / std
@@ -1207,8 +1207,8 @@ def lin_underestimator(lb, ub, surrogate):
     a4 = np.empty([n, k])
     b2 = np.empty([n, k])
     b4 = np.empty([n, k])
-    b1_hat = np.empty([n, 1])
-    b3_hat = np.empty([n, 1])
+    b1_hat = np.empty([n, ])
+    b3_hat = np.empty([n, ])
 
     dist_r = ub_r - lb_r
     dist_x = ub_x - lb_x
@@ -1259,8 +1259,8 @@ def lin_underestimator(lb, ub, surrogate):
     Ain1 = np.concatenate((a2, a4), axis=0)
     Ain2 = np.concatenate((a1_hat, a3_hat), axis=0)
     Ain_hat = np.concatenate((Ain1, Ain2), axis=1)
-    bin_hat = np.concatenate((-(b1_hat + np.sum(b2, axis=1).reshape(n, 1)),
-                              -(b3_hat + np.sum(b4, axis=1).reshape(n, 1))), axis=0)
+    bin_hat = np.concatenate((-(b1_hat + np.sum(b2, axis=1)),
+                              -(b3_hat + np.sum(b4, axis=1))), axis=0)
 
     return Ain_hat, bin_hat
 
@@ -1297,17 +1297,17 @@ def calc_conEI_norm(xval, obj_surrogate, SSqr=None, y_hat=None):
         p = obj_surrogate.p
 
         n = np.shape(X)[0]
-        one = np.ones([n, 1])
+        one = np.ones((n, ))
 
-        r = np.exp(-np.sum(thetas.T * (xval - X)**p, 1)).reshape(n, 1)
+        r = np.exp(-np.einsum("ij->i", thetas.T * (xval - X)**p ))
 
-        y_hat = mu + np.dot(r.T, c_r)
+        y_hat = mu + np.dot(r, c_r)
         term0 = np.dot(R_inv, r)
 
         # Note: This dot product with one stuff seems to be faster than np.sum for these small
         # sized matrices.
-        SSqr = SigmaSqr * (1.0 - r.T.dot(term0) +
-                           ((1.0 - one.T.dot(term0))**2) / (one.T.dot(np.dot(R_inv, one))))
+        SSqr = SigmaSqr * (1.0 - r.dot(term0) +
+                           ((1.0 - one.dot(term0))**2) / (one.dot(np.dot(R_inv, one))))
 
     if SSqr <= 1.0e-30:
         if abs(SSqr) <= 1.0e-30:

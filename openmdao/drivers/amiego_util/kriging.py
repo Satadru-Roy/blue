@@ -98,7 +98,6 @@ class KrigingSurrogate(SurrogateModel):
             False when KPLS is not added to Kriging (default)
             True Adds KPLS method to Kriging to reduce the number of hyper-parameters
         """
-
         super(KrigingSurrogate, self).train(x, y)
 
         x, y = np.atleast_2d(x, y)
@@ -106,9 +105,7 @@ class KrigingSurrogate(SurrogateModel):
         self.n_samples, self.n_dims = x.shape
 
         if self.n_samples <= 1:
-            raise ValueError(
-                'KrigingSurrogate require at least 2 training points.'
-            )
+            raise ValueError('KrigingSurrogate require at least 2 training points.')
 
         # Normalize the data
         X_mean = np.mean(x, axis=0)
@@ -209,7 +206,7 @@ class KrigingSurrogate(SurrogateModel):
                 """ pyoptsparse callback function."""
                 fail = 0
                 thetas = dv_dict['x']
-                x = np.dot((self.Wstar**2), (10.0**thetas).T).flatten()
+                x = np.dot((self.Wstar**2), (10.0**thetas).T)
                 loglike = self._calculate_reduced_likelihood_params(x)[0]
 
                 # Objective
@@ -227,7 +224,7 @@ class KrigingSurrogate(SurrogateModel):
                 print("SNOPT failed to converge.", msg)
                 opt_f = 1.0
 
-            thetas = np.asarray(10.0**opt_x).flatten()
+            thetas = np.asarray(10.0**opt_x)
             fval = opt_f
 
         # Use Scipy COBYLA.
@@ -274,7 +271,7 @@ class KrigingSurrogate(SurrogateModel):
             distances[i, :, i+1:] = np.abs(X[i, ...] - X[i+1:, ...]).T
             distances[i+1:, :, i] = distances[i, :, i+1:].T
 
-        R = np.exp(-thetas.flatten().dot(np.square(distances)))
+        R = np.exp(-thetas.dot(np.square(distances)))
         R[np.diag_indices_from(R)] = 1. + self.nugget
 
         [U, S, Vh] = linalg.svd(R)
@@ -389,11 +386,11 @@ class KrigingSurrogate(SurrogateModel):
             A = np.dot(np.dot(X.T, y), np.dot(y.T, X))
             qk = np.zeros([A.shape[0], 1])
             qk[0] = 1.0
-            kk=0.
+            kk = 0
             delta = 1.0
             qk_prev = qk
             while delta > 1.0e-6:
-                kk = kk + 1.
+                kk += 1
                 zk = np.dot(A, qk)
                 qk = zk / np.linalg.norm(zk)
                 delta = np.linalg.norm(qk - qk_prev)
@@ -403,18 +400,16 @@ class KrigingSurrogate(SurrogateModel):
         Xl = self.X
         yl = self.Y
         k = self.n_dims
+        W = np.empty((k, self.pcom))
+        P = np.empty((k, self.pcom))
         for l in range(self.pcom):
             wl = power_iter(Xl, yl)
             tl = np.dot(Xl, wl)
             tl_hat = tl/(np.dot(tl.T, tl))
             pl = (np.dot(Xl.T, tl_hat)).T
             cl = np.dot(yl.T, tl_hat)
-            if l == 0:  # FIXME: Re-code this
-                W = wl * 1.0
-                P = pl.T * 1.0
-            else:
-                W = np.concatenate((W, wl), axis=1)
-                P = np.concatenate((P, pl.T), axis=1)
+            W[:, l] = wl[:, 0]
+            P[:, l] = pl[0, :]
             Xl = Xl - np.dot(tl, pl)
             yl = yl - cl * tl
         Wstar = np.dot(W, np.linalg.inv(np.dot(P.T, W)))  # TODO: See if there are better ways to do inverse
