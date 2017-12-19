@@ -1,5 +1,7 @@
 """
 Surrogate model based on Kriging.
+
+In AMIEGO, optimization over the integer design variables are done on this surrogate.
 """
 from __future__ import print_function
 
@@ -15,57 +17,36 @@ from openmdao.utils.concurrent import concurrent_eval_lb, concurrent_eval
 MACHINE_EPSILON = np.finfo(np.double).eps
 
 
-class SurrogateModel(object):
-    """
-    Base class for surrogate models.
-    """
-
-    def __init__(self):
-        self.trained = False
-
-    def train(self, x, y):
-        self.trained = True
-
-    def predict(self, x):
-        if not self.trained:
-            msg = "{0} has not been trained, so no prediction can be made."\
-                .format(type(self).__name__)
-            raise RuntimeError(msg)
-
-    def linearize(self, x):
-
-        msg = "{0} has not defined a jacobian method." \
-            .format(type(self).__name__)
-        raise RuntimeError(msg)
-
-
-class KrigingSurrogate(SurrogateModel):
+class AMIEGOKrigingSurrogate(object):
     """
     Surrogate Modeling method based on the simple Kriging interpolation.
+
     Predictions are returned as a tuple of mean and RMSE. Based on Gaussian Processes
     for Machine Learning (GPML) by Rasmussen and Williams. (see also: scikit-learn).
-
-    Parameters
-    ----------
-    nugget : double or ndarray, optional
-        Nugget smoothing parameter for smoothing noisy data. Represents the variance of the input values.
-        If nugget is an ndarray, it must be of the same length as the number of training points.
-        Default: 10. * Machine Epsilon
-    eval_rmse : bool
-        Flag indicating whether the Root Mean Squared Error (RMSE) should be computed. Set to False
-        by default.
     """
 
     def __init__(self, nugget=10. * MACHINE_EPSILON, eval_rmse=False):
-        super(KrigingSurrogate, self).__init__()
+        """
+        Initialize the Amiego Kriging surrogate.
 
+        Parameters
+        ----------
+        nugget : double or ndarray, optional
+            Nugget arameter for smoothing noisy data. Represents the variance of the input
+            values. If nugget is an ndarray, it must be of the same length as the number of training
+            points. Default: 10. * Machine Epsilon
+        eval_rmse : bool
+            Flag indicating whether the Root Mean Squared Error (RMSE) should be computed.
+            Set to False by default.
+        """
         self.n_dims = 0       # number of independent
         self.n_samples = 0       # number of training points
         self.thetas = np.zeros(0)
-        self.nugget = nugget     # nugget smoothing parameter from [Sasena, 2002]
+        self.nugget = nugget
 
         self.c_r = np.zeros(0)
         self.SigmaSqr = np.zeros(0)
+        self.trained = False
 
         # Normalized Training Values
         self.X = np.zeros(0)
@@ -98,7 +79,7 @@ class KrigingSurrogate(SurrogateModel):
             False when KPLS is not added to Kriging (default)
             True Adds KPLS method to Kriging to reduce the number of hyper-parameters
         """
-        super(KrigingSurrogate, self).train(x, y)
+        self.trained = True
 
         x, y = np.atleast_2d(x, y)
 
@@ -163,9 +144,8 @@ class KrigingSurrogate(SurrogateModel):
         cases = [([pt], None) for pt in start_point]
         results = concurrent_eval_lb(self._calculate_thetas, cases,
                                      comm, broadcast=True)
-        #results = concurrent_eval(self._calculate_thetas, cases,
-        #                          comm, allgather=True)
-
+        # results = concurrent_eval(self._calculate_thetas, cases,
+        #                           comm, allgather=True)
 
         # Print the traceback if it fails
         for result in results:
@@ -189,22 +169,25 @@ class KrigingSurrogate(SurrogateModel):
         self.R_inv = params['R_inv']
 
     def _calculate_thetas(self, point):
-        """ Optimization to solve for hyperparameters. This has been
-        parallelized so that the best value can be found from a set of
+        """
+        Solve optimization problem for hyperparameters.
+
+        This has been parallelized so that the best value can be found from a set of
         optimization starting points.
 
         Args
         ----
         point: list
-            Starting point for opt."""
-
+            Starting point for opt.
+        """
         x0 = -3.0 * np.ones((self.pcom, )) + point * (5.0 * np.ones((self.pcom, )))
 
         # Use SNOPT (or fallback on other pyoptsparse optimizer.)
         if self.use_snopt:
             def _calcll(dv_dict):
-                """ pyoptsparse callback function."""
-                fail = 0
+                """
+                Evaluate objective for pyoptsparse.
+                """
                 thetas = dv_dict['x']
                 x = np.dot((self.Wstar**2), (10.0**thetas).T)
                 loglike = self._calculate_reduced_likelihood_params(x)[0]
@@ -213,12 +196,12 @@ class KrigingSurrogate(SurrogateModel):
                 func_dict = {}
                 func_dict['obj'] = -loglike
 
-                return func_dict, fail
+                return func_dict, 0
 
-            low = -3.0*np.ones([self.pcom, 1])
-            high = 2.0*np.ones([self.pcom, 1])
+            low = -3.0 * np.ones([self.pcom, 1])
+            high = 2.0 * np.ones([self.pcom, 1])
             opt_x, opt_f, success, msg = snopt_opt(_calcll, x0, low, high, title='kriging',
-                                                   options={'Major optimality tolerance' : 1.0e-6})
+                                                   options={'Major optimality tolerance': 1.0e-6})
 
             if not success:
                 print("SNOPT failed to converge.", msg)
@@ -231,7 +214,9 @@ class KrigingSurrogate(SurrogateModel):
         else:
 
             def _calcll(thetas):
-                """ Scipy Cobyla Callback function"""
+                """
+                Evaluate objective for Scipy Cobyla.
+                """
                 x = np.dot((self.Wstar**2), (10.0**thetas).T).flatten()
                 loglike = self._calculate_reduced_likelihood_params(x)[0]
                 return -loglike
@@ -268,8 +253,8 @@ class KrigingSurrogate(SurrogateModel):
         # Correlation Matrix
         distances = np.zeros((self.n_samples, self.n_dims, self.n_samples))
         for i in range(self.n_samples):
-            distances[i, :, i+1:] = np.abs(X[i, ...] - X[i+1:, ...]).T
-            distances[i+1:, :, i] = distances[i, :, i+1:].T
+            distances[i, :, i + 1:] = np.abs(X[i, ...] - X[i + 1:, ...]).T
+            distances[i + 1:, :, i] = distances[i, :, i + 1:].T
 
         R = np.exp(-thetas.dot(np.square(distances)))
         R[np.diag_indices_from(R)] = 1. + self.nugget
@@ -300,7 +285,7 @@ class KrigingSurrogate(SurrogateModel):
         params['Vh'] = Vh
         params['R_inv'] = R_inv
         params['mu'] = mu
-        params['SigmaSqr'] = SigmaSqr  #T his is wrt normalized y
+        params['SigmaSqr'] = SigmaSqr  # This is wrt normalized y
 
         return reduced_likelihood, params
 
@@ -324,7 +309,10 @@ class KrigingSurrogate(SurrogateModel):
         float
             New predicted value
         """
-        super(KrigingSurrogate, self).predict(x)
+        if not self.trained:
+            msg = "{0} has not been trained, so no prediction can be made."\
+                .format(type(self).__name__)
+            raise RuntimeError(msg)
 
         X, Y = self.X, self.Y
         thetas = self.thetas
@@ -349,8 +337,9 @@ class KrigingSurrogate(SurrogateModel):
         if self.eval_rmse:
             one = np.ones([self.n_samples, 1])
             R_inv = self.R_inv
-            mse  = self.SigmaSqr*(1.0 - np.dot(r.T, np.dot(R_inv, r)) + \
-            ((1.0 - np.dot(one.T, np.dot(R_inv, r)))**2 / np.dot(one.T, np.dot(R_inv, one))))
+            mse = self.SigmaSqr * (1.0 - np.dot(r.T, np.dot(R_inv, r)) +
+                                   ((1.0 - np.dot(one.T, np.dot(R_inv, r)))**2 /
+                                    np.dot(one.T, np.dot(R_inv, one))))
 
             # Forcing negative RMSE to zero if negative due to machine precision
             mse[mse < 0.] = 0.
@@ -360,12 +349,17 @@ class KrigingSurrogate(SurrogateModel):
 
     def linearize(self, x):
         """
-        Calculates the jacobian of the Kriging surface at the requested point.
+        Calculate the jacobian of the Kriging surface at the requested point.
 
         Parameters
         ----------
         x : array-like
             Point at which the surrogate Jacobian is evaluated.
+
+        Returns
+        -------
+        ndarray
+            Jacobian of modeled outputs with respect to inputs.
         """
         thetas = self.thetas
 
@@ -382,6 +376,14 @@ class KrigingSurrogate(SurrogateModel):
         return jac
 
     def KPLS_reg(self):
+        """
+        Compute the KLPS weights.
+
+        Returns
+        -------
+        ndarray
+            Wstar, the KPLS weights.
+        """
         def power_iter(X, y):
             A = np.dot(np.dot(X.T, y), np.dot(y.T, X))
             qk = np.zeros([A.shape[0], 1])
@@ -405,13 +407,13 @@ class KrigingSurrogate(SurrogateModel):
         for l in range(self.pcom):
             wl = power_iter(Xl, yl)
             tl = np.dot(Xl, wl)
-            tl_hat = tl/(np.dot(tl.T, tl))
+            tl_hat = tl / (np.dot(tl.T, tl))
             pl = (np.dot(Xl.T, tl_hat)).T
             cl = np.dot(yl.T, tl_hat)
             W[:, l] = wl[:, 0]
             P[:, l] = pl[0, :]
             Xl = Xl - np.dot(tl, pl)
             yl = yl - cl * tl
-        Wstar = np.dot(W, np.linalg.inv(np.dot(P.T, W)))  # TODO: See if there are better ways to do inverse
+        # TODO: See if there are better ways to do inverse
+        Wstar = np.dot(W, np.linalg.inv(np.dot(P.T, W)))
         return Wstar
-

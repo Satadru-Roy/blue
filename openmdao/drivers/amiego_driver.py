@@ -23,7 +23,7 @@ import numpy as np
 
 from openmdao.core.driver import Driver
 from openmdao.drivers.amiego_util.branch_and_bound import Branch_and_Bound
-from openmdao.drivers.amiego_util.kriging import KrigingSurrogate
+from openmdao.drivers.amiego_util.kriging import AMIEGOKrigingSurrogate
 from openmdao.drivers.scipy_optimizer import ScipyOptimizer
 from openmdao.recorders.recording_iteration_stack import Recording
 
@@ -88,7 +88,7 @@ class AMIEGO_driver(Driver):
 
         # Default surrogate. User can slot a modified one, but it essentially
         # has to provide what Kriging provides.
-        self.surrogate = KrigingSurrogate
+        self.surrogate = AMIEGOKrigingSurrogate
 
         self.c_dvs = []
         self.i_size = 0

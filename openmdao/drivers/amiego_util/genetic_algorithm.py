@@ -20,6 +20,7 @@ class GeneticAlgorithm():
     This is the Simple Genetic Algorithm implementation based on 2009 AAE550: MDO Lecture notes of
     Prof. William A. Crossley. It can be used standalone or as part of the OpenMDAO Driver.
     """
+
     def __init__(self, objfun, comm=None):
         """
         Initialize genetic algorithm object.
@@ -254,7 +255,7 @@ class GeneticAlgorithm():
         for jj in range(num_desvar):
             exponents = 2**np.array(range(bits[jj] - 1, -1, -1))
             ebit += bits[jj]
-            fact = exponents*(gen[:, sbit:ebit])
+            fact = exponents * (gen[:, sbit:ebit])
             x[:, jj] = np.einsum('ij->i', fact) * interval[jj] + vlb[jj]
             sbit = ebit
         return x
@@ -282,12 +283,12 @@ class GeneticAlgorithm():
         # TODO : We need this method if we ever start with user defined initial sampling points.
         return
 
-    #def test_func(self, x):
-        #''' Solution: xopt = [0.2857, -0.8571], fopt = 23.2933'''
-        #A = (2*x[0] - 3*x[1])**2;
-        #B = 18 - 32*x[0] + 12*x[0]**2 + 48*x[1] - 36*x[0]*x[1] + 27*x[1]**2;
-        #C = (x[0] + x[1] + 1)**2;
-        #D = 19 - 14*x[0] + 3*x[0]**2 - 14*x[1] + 6*x[0]*x[1] + 3*x[1]**2;
+    # def test_func(self, x):
+        # ''' Solution: xopt = [0.2857, -0.8571], fopt = 23.2933'''
+        # A = (2*x[0] - 3*x[1])**2;
+        # B = 18 - 32*x[0] + 12*x[0]**2 + 48*x[1] - 36*x[0]*x[1] + 27*x[1]**2;
+        # C = (x[0] + x[1] + 1)**2;
+        # D = 19 - 14*x[0] + 3*x[0]**2 - 14*x[1] + 6*x[0]*x[1] + 3*x[1]**2;
 
-        #f = (30 + A*B)*(1 + C*D);
-        #return f
+        # f = (30 + A*B)*(1 + C*D);
+        # return f
