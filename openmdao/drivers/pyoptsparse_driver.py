@@ -431,6 +431,7 @@ class pyOptSparseDriver(Driver):
                 except AnalysisError:
                     model._clear_iprint()
                     fail = 1
+                    print("AnalysisError detected. Reporting Fail=1 to pyoptsparse.")
 
                 func_dict = self.get_objective_values()
                 func_dict.update(self.get_constraint_values(lintype='nonlinear'))
@@ -492,6 +493,7 @@ class pyOptSparseDriver(Driver):
             except AnalysisError:
                 self._problem.model._clear_iprint()
                 fail = 1
+                print("AnalysisError detected. Reporting Fail=1 to pyoptsparse.")
 
                 # We need to cobble together a sens_dict of the correct size.
                 # Best we can do is return zeros.
