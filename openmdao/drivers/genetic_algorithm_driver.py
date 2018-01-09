@@ -9,17 +9,28 @@ used in more complicated driver.
 """
 import copy
 
+from six import iteritems
 from six.moves import range
 
 import numpy as np
 from pyDOE import lhs
 
 from openmdao.core.driver import Driver
+from openmdao.recorders.recording_iteration_stack import Recording
 
 
 class SimpleGADriver(Driver):
     """
     Driver for a simple genetic algorithm.
+
+    Options
+    -------
+    options['elitism'] :  bool(True)
+        If True, replace worst performing point with best from previous generation each iteration.
+    options['max_gen'] :  int(300)
+        Number of generations before termination.
+    options['pop_size'] :  int(25)
+        Number of points in the GA.
 
     Attributes
     ----------
@@ -31,6 +42,11 @@ class SimpleGADriver(Driver):
         Contains all constraint info.
     _designvars : dict
         Contains all design variable info.
+    _desvar_idx : dict
+        Keeps track of the indices for each desvar, since GeneticAlgorithm seess an array of
+        design variables.
+    _ga : <GeneticAlgorithm>
+        Main genetic algorithm lies here.
     _objs : dict
         Contains all objective info.
     _quantities : list
@@ -58,6 +74,11 @@ class SimpleGADriver(Driver):
         self.supports['active_set'] = False
 
         # User Options
+        self.options.declare('bits', default={}, types=(dict),
+                             desc='Number of bits of resolution. Default is an empty dict, where '
+                             'every unspecified variable is assumed to be integer, and the number '
+                             'of bits is calculated automatically. If you have a continuous var, '
+                             'you should set a bits value as a key in this dictionary.')
         self.options.declare('elitism', default=True,
                              desc='If True, replace worst performing point with best from previous'
                              ' generation each iteration.')
@@ -66,7 +87,132 @@ class SimpleGADriver(Driver):
         self.options.declare('pop_size', default=300,
                              desc='Number of points in the GA.')
 
-        self.ga = GeneticAlgorithm(self.objective_callback)
+        self._ga = GeneticAlgorithm(self.objective_callback)
+
+        self._desvar_idx = {}
+
+    def _setup_driver(self, problem):
+        """
+        Prepare the driver for execution.
+
+        This is the final thing to run during setup.
+
+        Parameters
+        ----------
+        problem : <Problem>
+            Pointer to the containing problem.
+        """
+        super(SimpleGADriver, self)._setup_driver(problem)
+
+        if len(self._objs) > 1:
+            msg = 'SimpleGADriver currently does not support multiple objectives.'
+            raise RuntimeError(msg)
+
+        if len(self._cons) > 0:
+            msg = 'SimpleGADriver currently does not support constraints.'
+            raise RuntimeError(msg)
+
+    def run(self):
+        """
+        Excute the genetic algorithm.
+
+        Returns
+        -------
+        boolean
+            Failure flag; True if failed to converge, False is successful.
+        """
+        ga = self._ga
+
+        # Size design variables.
+        desvars = self._designvars
+        count = 0
+        for name, meta in iteritems(desvars):
+            size = meta['size']
+            self._desvar_idx[name] = (count, count+size)
+            count += size
+
+        lower_bound = np.empty((count, ))
+        upper_bound = np.empty((count, ))
+
+        # Figure out bounds vectors.
+        for name, meta in iteritems(desvars):
+            i, j = self._desvar_idx[name]
+            lower_bound[i:j] = meta['lower']
+            upper_bound[i:j] = meta['upper']
+
+        ga.elite = self.options['elitism']
+        pop_size = self.options['pop_size']
+        max_gen = self.options['max_gen']
+        user_bits = self.options['bits']
+
+        # Bits of resolution
+        bits = np.ceil(np.log2(upper_bound - lower_bound + 1)).astype(int)
+        for name, val in iteritems(user_bits):
+            i, j = self._desvar_idx[name]
+            bits[i:j] = val
+
+        desvar_new, obj, nfit = ga.execute_ga(lower_bound, upper_bound, bits, pop_size, max_gen)
+
+        # Pull optimal parameters back into framework and re-run, so that
+        # framework is left in the right final state
+        for name in desvars:
+            i, j = self._desvar_idx[name]
+            val = desvar_new[i:j]
+            self.set_design_var(name, val)
+
+        with Recording('SimpleGA', self.iter_count, self) as rec:
+            self._problem.model._solve_nonlinear()
+            rec.abs = 0.0
+            rec.rel = 0.0
+        self.iter_count += 1
+
+    def objective_callback(self, x):
+        """
+        Evaluate problem objective at the requested point.
+
+        Parameters
+        ----------
+        x : ndarray
+            Value of design variables.
+
+        Returns
+        -------
+        float
+            Objective value
+        bool
+            Success flag, True if successful
+        """
+        model = self._problem.model
+        success = 1
+
+        for name in self._designvars:
+            i, j = self._desvar_idx[name]
+            self.set_design_var(name, x[i:j])
+
+        # Execute the model
+        with Recording('SimpleGA', self.iter_count, self) as rec:
+            self.iter_count += 1
+            try:
+                model._solve_nonlinear()
+
+            # Tell the optimizer that this is a bad point.
+            except AnalysisError:
+                model._clear_iprint()
+                success = 0
+
+            for name, val in iteritems(self.get_objective_values()):
+                obj = val
+                break
+
+            # Record after getting obj to assure they have
+            # been gathered in MPI.
+            rec.abs = 0.0
+            rec.rel = 0.0
+
+        # print("Functions calculated")
+        # print(x)
+        # print(obj)
+        return obj, success
 
 
 class GeneticAlgorithm():
@@ -107,7 +253,7 @@ class GeneticAlgorithm():
         vub : ndarray
             Upper bounds array.
         bits : ndarray
-        Number of bits to encode the design space for each element of the design vector.
+            Number of bits to encode the design space for each element of the design vector.
         pop_size : int
             Number of points in the population.
         max_gen : int
@@ -115,7 +261,7 @@ class GeneticAlgorithm():
 
         Returns
         -------
-        ndaray
+        ndarray
             Best design point
         float
             Objective value at best design point.
@@ -295,7 +441,7 @@ class GeneticAlgorithm():
             Lower bound array.
         vub : ndarray
             Upper bound array.
-        bits : int
+        bits : ndarray
             Number of bits for decoding.
 
         Returns
@@ -339,12 +485,3 @@ class GeneticAlgorithm():
         # TODO : We need this method if we ever start with user defined initial sampling points.
         pass
 
-    # def test_func(self, x):
-        # ''' Solution: xopt = [0.2857, -0.8571], fopt = 23.2933'''
-        # A = (2*x[0] - 3*x[1])**2;
-        # B = 18 - 32*x[0] + 12*x[0]**2 + 48*x[1] - 36*x[0]*x[1] + 27*x[1]**2;
-        # C = (x[0] + x[1] + 1)**2;
-        # D = 19 - 14*x[0] + 3*x[0]**2 - 14*x[1] + 6*x[0]*x[1] + 3*x[1]**2;
-
-        # f = (30 + A*B)*(1 + C*D);
-        # return f
