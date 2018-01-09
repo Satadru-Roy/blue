@@ -48,7 +48,7 @@ class GeneticAlgorithm():
         ----------
         vlb : ndarray
             Lower bounds array.
-        ulb : ndarray
+        vub : ndarray
             Upper bounds array.
         bits : int
             Number of bits to encode the design space.
@@ -160,7 +160,7 @@ class GeneticAlgorithm():
 
         Parameters
         ----------
-        current_gen : ndarray
+        old_gen : ndarray
             Points in current generation
 
         Pc : float
@@ -237,7 +237,7 @@ class GeneticAlgorithm():
             Population of points, encoded.
         vlb : ndarray
             Lower bound array.
-        ulb : ndarray
+        vub : ndarray
             Upper bound array.
         bits : int
             Number of bits for decoding.
@@ -270,7 +270,7 @@ class GeneticAlgorithm():
             Design variable values.
         vlb : ndarray
             Lower bound array.
-        ulb : ndarray
+        vub : ndarray
             Upper bound array.
         bits : int
             Number of bits for decoding.
@@ -281,7 +281,7 @@ class GeneticAlgorithm():
             Population of points, encoded.
         """
         # TODO : We need this method if we ever start with user defined initial sampling points.
-        return
+        pass
 
     # def test_func(self, x):
         # ''' Solution: xopt = [0.2857, -0.8571], fopt = 23.2933'''

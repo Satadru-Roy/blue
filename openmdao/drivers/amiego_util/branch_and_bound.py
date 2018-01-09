@@ -29,7 +29,7 @@ from scipy.special import erf
 from pyDOE import lhs
 
 from openmdao.core.driver import Driver
-from openmdao.drivers.amiego_util.genetic_algorithm import GeneticAlgorithm
+from openmdao.drivers.genetic_algorithm_driver import GeneticAlgorithm
 from openmdao.drivers.amiego_util.optimize_function import snopt_opt
 from openmdao.utils.concurrent import concurrent_eval, concurrent_eval_lb
 from openmdao.utils.general_utils import set_pyoptsparse_opt

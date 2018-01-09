@@ -54,7 +54,9 @@ class AMIEGO_driver(Driver):
     """
 
     def __init__(self):
-        """Initialize the AMIEGO driver."""
+        """
+        Initialize the AMIEGO driver.
+        """
         super(AMIEGO_driver, self).__init__()
 
         # What we support
@@ -527,6 +529,8 @@ class AMIEGO_driver(Driver):
             print("Best Integer designs: ", best_int_design)
             print("Corresponding continuous designs: ", best_cont_design)
             print("=====================================================")
+
+        return True
 
     def pre_cont_opt_hook(self):
         """
