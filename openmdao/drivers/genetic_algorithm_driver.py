@@ -82,9 +82,9 @@ class SimpleGADriver(Driver):
         self.options.declare('elitism', default=True,
                              desc='If True, replace worst performing point with best from previous'
                              ' generation each iteration.')
-        self.options.declare('max_gen', default=25,
+        self.options.declare('max_gen', default=300,
                              desc='Number of generations before termination.')
-        self.options.declare('pop_size', default=300,
+        self.options.declare('pop_size', default=25,
                              desc='Number of points in the GA.')
 
         self._ga = GeneticAlgorithm(self.objective_callback)
@@ -121,6 +121,7 @@ class SimpleGADriver(Driver):
         boolean
             Failure flag; True if failed to converge, False is successful.
         """
+        model = self._problem.model
         ga = self._ga
 
         # Size design variables.
@@ -147,8 +148,15 @@ class SimpleGADriver(Driver):
 
         # Bits of resolution
         bits = np.ceil(np.log2(upper_bound - lower_bound + 1)).astype(int)
+        prom2abs = model._var_allprocs_prom2abs_list['output']
+
         for name, val in iteritems(user_bits):
-            i, j = self._desvar_idx[name]
+            try:
+                i, j = self._desvar_idx[name]
+            except KeyError:
+                abs_name = prom2abs[name][0]
+                i, j = self._desvar_idx[abs_name]
+
             bits[i:j] = val
 
         desvar_new, obj, nfit = ga.execute_ga(lower_bound, upper_bound, bits, pop_size, max_gen)
@@ -161,7 +169,7 @@ class SimpleGADriver(Driver):
             self.set_design_var(name, val)
 
         with Recording('SimpleGA', self.iter_count, self) as rec:
-            self._problem.model._solve_nonlinear()
+            model._solve_nonlinear()
             rec.abs = 0.0
             rec.rel = 0.0
         self.iter_count += 1
@@ -378,8 +386,10 @@ class GeneticAlgorithm():
         sites = np.random.rand(num_sites, self.lchrom)
         idx, idy = np.where(sites < Pc)
         for ii, jj in zip(idx, idy):
-            new_gen[2 * ii][jj] = old_gen[2 * ii + 1][jj]
-            new_gen[2 * ii + 1][jj] = old_gen[2 * ii][jj]
+            i = 2 * ii
+            j = i + 1
+            new_gen[i][jj] = old_gen[j][jj]
+            new_gen[j][jj] = old_gen[i][jj]
         return new_gen
 
     def mutate(self, current_gen, Pm):
