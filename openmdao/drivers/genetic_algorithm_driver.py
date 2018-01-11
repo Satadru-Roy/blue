@@ -17,6 +17,7 @@ from pyDOE import lhs
 
 from openmdao.core.driver import Driver
 from openmdao.recorders.recording_iteration_stack import Recording
+from openmdao.utils.concurrent import concurrent_eval
 
 
 class SimpleGADriver(Driver):
@@ -36,6 +37,8 @@ class SimpleGADriver(Driver):
     ----------
     problem : <Problem>
         Pointer to the containing problem.
+    run_parallel : bool
+        Set to True to execute the points in a generation in parallel.
     supports : <OptionsDictionary>
         Provides a consistant way for drivers to declare what features they support.
     _cons : dict
@@ -86,10 +89,11 @@ class SimpleGADriver(Driver):
                              desc='Number of generations before termination.')
         self.options.declare('pop_size', default=25,
                              desc='Number of points in the GA.')
-
-        self._ga = GeneticAlgorithm(self.objective_callback)
+        self.options.declare('run_parallel', default=False,
+                             desc='Set to True to execute the points in a generation in parallel.')
 
         self._desvar_idx = {}
+        self._ga = None
 
     def _setup_driver(self, problem):
         """
@@ -112,6 +116,13 @@ class SimpleGADriver(Driver):
             msg = 'SimpleGADriver currently does not support constraints.'
             raise RuntimeError(msg)
 
+        if self.options['run_parallel']:
+            comm = self._problem.comm
+        else:
+            comm = None
+
+        self._ga = GeneticAlgorithm(self.objective_callback, comm=comm)
+
     def run(self):
         """
         Excute the genetic algorithm.
@@ -129,7 +140,7 @@ class SimpleGADriver(Driver):
         count = 0
         for name, meta in iteritems(desvars):
             size = meta['size']
-            self._desvar_idx[name] = (count, count+size)
+            self._desvar_idx[name] = (count, count + size)
             count += size
 
         lower_bound = np.empty((count, ))
@@ -174,7 +185,9 @@ class SimpleGADriver(Driver):
             rec.rel = 0.0
         self.iter_count += 1
 
-    def objective_callback(self, x):
+        return False
+
+    def objective_callback(self, x, icase):
         """
         Evaluate problem objective at the requested point.
 
@@ -182,6 +195,8 @@ class SimpleGADriver(Driver):
         ----------
         x : ndarray
             Value of design variables.
+        icase : int
+            Case number, used for identification when run in parallel.
 
         Returns
         -------
@@ -189,6 +204,8 @@ class SimpleGADriver(Driver):
             Objective value
         bool
             Success flag, True if successful
+        int
+            Case number, used for identification when run in parallel.
         """
         model = self._problem.model
         success = 1
@@ -220,7 +237,7 @@ class SimpleGADriver(Driver):
         # print("Functions calculated")
         # print(x)
         # print(obj)
-        return obj, success
+        return obj, success, icase
 
 
 class GeneticAlgorithm():
@@ -244,7 +261,7 @@ class GeneticAlgorithm():
             The MPI communicator that will be used objective evaluation for each generation.
         """
         self.objfun = objfun
-        self.comm = None
+        self.comm = comm
 
         self.lchrom = 0
         self.npop = 0
@@ -300,13 +317,42 @@ class GeneticAlgorithm():
             x_pop = self.decode(old_gen, vlb, vub, bits)
 
             # Evaluate points in this generation.
-            for ii in range(self.npop):
-                x = x_pop[ii]
-                fitness[ii], success = self.objfun(x)
-                if success:
-                    nfit += 1
-                else:
-                    fitness[ii] = np.inf
+            if self.comm is not None:
+                # Parallel
+                cases = [((item, ii), None) for ii, item in enumerate(x_pop)]
+                print('x_pop', x_pop)
+                print('cases', cases)
+
+                results = concurrent_eval(self.objfun, cases, self.comm, allgather=True)
+
+                fitness[:] = np.inf
+                for result in results:
+                    returns, traceback = result
+
+                    if returns:
+                        val, success, ii = returns
+                        if success:
+                            fitness[ii] = val
+                            nfit += 1
+
+                    else:
+                        # Print the traceback if it fails
+                        print('A case failed:')
+                        print(traceback)
+
+            else:
+                # Serial
+                print('x_pop', x_pop)
+                for ii in range(self.npop):
+                    x = x_pop[ii]
+
+                    fitness[ii], success, _ = self.objfun(x, 0)
+                    print('eval', fitness[ii], success)
+
+                    if success:
+                        nfit += 1
+                    else:
+                        fitness[ii] = np.inf
 
             # Elitism means replace worst performing point with best from previous generation.
             if elite and generation > 0:
@@ -494,4 +540,3 @@ class GeneticAlgorithm():
         """
         # TODO : We need this method if we ever start with user defined initial sampling points.
         pass
-
