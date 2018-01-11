@@ -999,7 +999,7 @@ class Branch_and_Bound(Driver):
         # print('con deriv', sens_dict['con']['x'])
         return sens_dict, fail
 
-    def obj_for_GA(self, x):
+    def obj_for_GA(self, x, icase):
         """
         Evalute main problem objective at the requested point.
 
@@ -1009,6 +1009,8 @@ class Branch_and_Bound(Driver):
         ----------
         x : ndarray
             Value of design variables.
+        icase : int
+            Case number, used for identification when run in parallel.
 
         Returns
         -------
@@ -1016,6 +1018,8 @@ class Branch_and_Bound(Driver):
             Objective value
         bool
             Success flag, True if successful
+        int
+            Case number, used for identification when run in parallel.
         """
         surrogate = self.obj_surrogate
         xU_iter = self.xU_iter
@@ -1033,7 +1037,7 @@ class Branch_and_Bound(Driver):
 
         NegEI = calc_conEI_norm(xval, surrogate)
         f = NegEI + rp * P
-        return f, True
+        return f, True, icase
 
 
 def update_active_set(active_set, ubd):
