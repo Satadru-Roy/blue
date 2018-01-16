@@ -13,7 +13,8 @@ directories = [
     'proc_allocators',
     'solvers',
     'utils',
-    'vectors'
+    'vectors',
+    'drivers'
 ]
 
 

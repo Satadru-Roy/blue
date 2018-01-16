@@ -37,7 +37,8 @@ class AMIEGO_driver(Driver):
     mixed-integer/discrete type design variables in a computationally
     efficient manner and finds a near-global solution to the above
     MINLP/MDNLP problem. The continuous optimization is handled by the
-    optimizer slotted in self.cont_opt.
+    optimizer slotted in self.cont_opt, which is ScipyOptimizer by
+    default.
 
     AMIEGO_driver supports the following:
         integer_design_vars
@@ -47,10 +48,40 @@ class AMIEGO_driver(Driver):
     options['ei_tol_rel'] :  0.001
         Relative tolerance on the expected improvement.
     options['max_infill_points'] : 10
-        Ratio of maximum number of additional points to number of initial
+        Maximum number of additional points per design variable.
         points.
     options['r_penalty'] : 1.0
         Constraint penalty applied to objective for surrogate model.
+
+    Attributes
+    ----------
+    fail : bool
+        Flag that indicates failure of most recent optimization.
+    hist_file : str or None
+        File location for saving pyopt_sparse optimization history.
+        Default is None for no output.
+    hotstart_file : str
+        Optional file to hot start the optimization.
+    opt_settings : dict
+        Dictionary for setting optimizer-specific options.
+    problem : <Problem>
+        Pointer to the containing problem.
+    supports : <OptionsDictionary>
+        Provides a consistant way for drivers to declare what features they support.
+    pyopt_solution : Solution
+        Pyopt_sparse solution object.
+    _cons : dict
+        Contains all constraint info.
+    _designvars : dict
+        Contains all design variable info.
+    _indep_list : list
+        List of design variables.
+    _objs : dict
+        Contains all objective info.
+    _quantities : list
+        Contains the objectives plus nonlinear constraints.
+    _responses : dict
+        Contains all response info.
     """
 
     def __init__(self):
@@ -75,9 +106,8 @@ class AMIEGO_driver(Driver):
                     desc='Set to False to prevent printing of iteration messages.')
         opt.declare('ei_tol_rel', 0.001, lower=0.0,
                     desc='Relative tolerance on the expected improvement.')
-        opt.declare('max_infill_points', 10, lower=1.0,
-                    desc='Ratio of maximum number of additional points to number of initial '
-                    'points.')
+        opt.declare('max_infill_points', 10, lower=1,
+                    desc='Maximum number of additional points per design variable.')
         opt.declare('r_penalty', 1.0,
                     desc='Constraint penalty applied to objective.')
 
@@ -520,7 +550,10 @@ class AMIEGO_driver(Driver):
         for name, val in iteritems(best_cont_design):
             self.set_design_var(name, val)
 
-        problem.model._solve_nonlinear()
+        with Recording('AMIEGO_cont_opt', i_con_opt, self) as rec:
+            problem.model._solve_nonlinear()
+            rec.abs = 0.0
+            rec.rel = 0.0
 
         if disp:
             print("\n===================Result Summary====================")
