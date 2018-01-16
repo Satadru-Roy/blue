@@ -55,33 +55,28 @@ class AMIEGO_driver(Driver):
 
     Attributes
     ----------
-    fail : bool
-        Flag that indicates failure of most recent optimization.
-    hist_file : str or None
-        File location for saving pyopt_sparse optimization history.
-        Default is None for no output.
-    hotstart_file : str
-        Optional file to hot start the optimization.
-    opt_settings : dict
-        Dictionary for setting optimizer-specific options.
-    problem : <Problem>
-        Pointer to the containing problem.
-    supports : <OptionsDictionary>
-        Provides a consistant way for drivers to declare what features they support.
-    pyopt_solution : Solution
-        Pyopt_sparse solution object.
-    _cons : dict
-        Contains all constraint info.
-    _designvars : dict
-        Contains all design variable info.
-    _indep_list : list
-        List of design variables.
-    _objs : dict
-        Contains all objective info.
-    _quantities : list
-        Contains the objectives plus nonlinear constraints.
-    _responses : dict
-        Contains all response info.
+    c_dvs : list
+        Cache of continuous design variable names.
+    con_sampling : dict(list)
+        Optional constraint values from user-supplied pre-optimized initial samples.
+    cont_opt : <Driver>
+        Slot for continuous optimizer.
+    i_idx : dict
+        Cache of local sizes for each design variable.
+    i_size : int
+        Number of integer design variables.
+    minlp : <Branch_and_Bound>
+        Slot for Branch and Bound subdriver.
+    n_train : int
+        Number of training points for surrogate.
+    obj_sampling : dict(list)
+        Optional objective values from user-supplied pre-optimized initial samples.
+    sampling : dict(list)
+        Initial sampling points.
+    sampling_eflag : dict(list)
+        Optional success flag from user-supplied pre-optimized initial samples.
+    surrogate : <AMIEGOKrigingSurrogate>
+        Surrogate model to use to model objective as a function of the integer design vars.
     """
 
     def __init__(self):
@@ -133,7 +128,6 @@ class AMIEGO_driver(Driver):
 
         # User can pre-load these to skip initial continuous optimization
         # in favor of pre-optimized points.
-        # NOTE: when running in this mode, everything comes in as lists.
         self.obj_sampling = None
         self.con_sampling = None
         self.sampling_eflag = None
