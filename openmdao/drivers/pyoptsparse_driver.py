@@ -365,24 +365,11 @@ class pyOptSparseDriver(Driver):
         if self.options['print_results']:
             print(sol)
 
-        # Pull optimal parameters back into framework and re-run, so that
-        # framework is left in the right final state
-        dv_dict = sol.getDVs()
-        for name in indep_list:
-            val = dv_dict[name]
-            self.set_design_var(name, val)
-
-        with RecordingDebugging(self.options['optimizer'], self.iter_count, self) as rec:
-            model._solve_nonlinear()
-            rec.abs = 0.0
-            rec.rel = 0.0
-        self.iter_count += 1
-
         # Save the most recent solution.
+        self.fail = False
         self.pyopt_solution = sol
         try:
             exit_status = sol.optInform['value']
-            self.fail = False
 
             # These are various failed statuses.
             if exit_status > 2:
@@ -391,6 +378,20 @@ class pyOptSparseDriver(Driver):
         except KeyError:
             # optimizers other than pySNOPT may not populate this dict
             pass
+
+        # Pull optimal parameters back into framework and re-run, so that
+        # framework is left in the right final state
+        if not self.fail:
+            dv_dict = sol.getDVs()
+            for name in indep_list:
+                val = dv_dict[name]
+                self.set_design_var(name, val)
+
+            with RecordingDebugging(self.options['optimizer'], self.iter_count, self) as rec:
+                model._solve_nonlinear()
+                rec.abs = 0.0
+                rec.rel = 0.0
+            self.iter_count += 1
 
         return self.fail
 
