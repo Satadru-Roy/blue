@@ -1457,11 +1457,11 @@ class NodeHist():
     """
     Data object for keeping track of statistics of each branch and bound node.
 
-    Parameters
+    Attributes
     ----------
     ubd_track : ndarray
         Upper bound array.
-    udloc_best : float
+    ubdloc_best : float
         Lowest upper bound estimate.
     priority_flag : bool
         Higher priority nodes will be given more population in the GA.
