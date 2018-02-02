@@ -77,8 +77,6 @@ class AMIEGO_driver(Driver):
         Initial sampling points.
     sampling_eflag : dict(list)
         Optional success flag from user-supplied pre-optimized initial samples.
-    surrogate : <AMIEGOKrigingSurrogate>
-        Surrogate model to use to model objective as a function of the integer design vars.
     """
 
     def __init__(self):
